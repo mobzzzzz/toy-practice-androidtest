@@ -1,3 +1,6 @@
 {
-    "java.configuration.updateBuildConfiguration": "automatic"
+    "java.configuration.updateBuildConfiguration": "automatic",
+    "gitlens.ai.model": "vscode",
+    "gitlens.ai.vscode.model": "copilot:claude-3.5-sonnet",
+    "gitlens.ai.generateCommitMessage.customInstructions": "커밋 메시지는 한글로 작성하고 다음 형식을 따라줘: 타입: 변경 요약. 예를 들어 수정: 버튼 색상 변경. 메시지는 두 줄 이내로 간결하게 써줘.",
 }
