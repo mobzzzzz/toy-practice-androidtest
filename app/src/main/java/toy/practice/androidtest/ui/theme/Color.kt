@@ -1,4 +1,4 @@
-package com.example.ondatest.ui.theme
+package toy.practice.androidtest.ui.theme
 
 import androidx.compose.ui.graphics.Color
 

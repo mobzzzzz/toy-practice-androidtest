@@ -1,4 +1,4 @@
-package com.example.ondatest.ui.components
+package toy.practice.androidtest.ui.components
 
 import android.view.ViewGroup
 import android.webkit.WebSettings

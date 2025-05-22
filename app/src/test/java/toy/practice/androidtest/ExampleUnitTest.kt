@@ -1,4 +1,4 @@
-package com.example.ondatest
+package toy.practice.androidtest
 
 import org.junit.Assert.*
 import org.junit.Test

@@ -1,4 +1,4 @@
-package com.example.ondatest.ui.screens
+package toy.practice.androidtest.ui.screens
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
@@ -7,8 +7,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.example.ondatest.ui.components.WebPage
 import kotlinx.coroutines.launch
+import toy.practice.androidtest.ui.components.WebPage
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

@@ -1,10 +1,10 @@
-package com.example.ondatest
+package toy.practice.androidtest
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import com.example.ondatest.ui.screens.MainScreen
+import toy.practice.androidtest.ui.screens.MainScreen
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {

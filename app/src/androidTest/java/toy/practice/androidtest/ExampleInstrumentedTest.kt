@@ -1,4 +1,4 @@
-package com.example.ondatest
+package toy.practice.androidtest
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
