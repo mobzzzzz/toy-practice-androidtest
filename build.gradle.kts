@@ -37,6 +37,13 @@ spotless {
 // Git Hooks 설정
 tasks.register<Copy>("updateGitHooks") {
     doFirst {
+        // .git 디렉토리 존재 여부 먼저 확인
+        val gitDir = rootProject.file(".git")
+        if (!gitDir.exists()) {
+            logger.warn("Git repository not initialized. Please run 'git init' first.")
+            return@doFirst
+        }
+
         // hooks 디렉토리 경로 확인 및 생성
         val hooksDir = rootProject.file(".git/hooks")
         if (!hooksDir.exists()) {
@@ -55,10 +62,8 @@ tasks.register<Copy>("updateGitHooks") {
             throw GradleException("Failed to copy pre-commit hook to ${preCommitFile.absolutePath}")
         }
 
-        // 실행 권한 부여
-        exec {
-            commandLine("chmod", "+x", preCommitFile.absolutePath)
-        }
+        // 실행 권한 부여 (rwxrwxr-x)
+        preCommitFile.setExecutable(true, false)
 
         logger.lifecycle("Successfully installed git hook: ${preCommitFile.absolutePath}")
     }
