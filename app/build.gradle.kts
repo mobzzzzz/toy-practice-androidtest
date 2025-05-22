@@ -5,11 +5,11 @@ plugins {
 }
 
 android {
-    namespace = "toy.practice.android"
+    namespace = "toy.practice.androidtest"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "toy.practice.android"
+        applicationId = "toy.practice.androidtest"
         minSdk = 24
         targetSdk = 35
         versionCode = 1
