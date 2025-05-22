@@ -5,11 +5,11 @@ plugins {
 }
 
 android {
-    namespace = "com.example.ondatest"
+    namespace = "toy.practice.android"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.example.ondatest"
+        applicationId = "toy.practice.android"
         minSdk = 24
         targetSdk = 35
         versionCode = 1
