@@ -123,7 +123,7 @@ jobs:
         with:
           files: |
             app/build/outputs/apk/release/app-release-unsigned.apk
-          name: Release ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
           body_path: CHANGELOG.md
           draft: false
           prerelease: false
