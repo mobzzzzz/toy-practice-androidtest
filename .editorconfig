@@ -1,0 +1,9 @@
+[*.{kt,kts}]
+# wildcard imports 규칙 비활성화
+ij_kotlin_name_count_to_use_star_import = 999
+ij_kotlin_name_count_to_use_star_import_for_members = 999
+ktlint_standard_no-wildcard-imports = disabled
+# KDoc 관련 규칙 비활성화
+ktlint_standard_kdoc = disabled
+# 함수 이름 규칙 비활성화
+ktlint_standard_function-naming = disabled

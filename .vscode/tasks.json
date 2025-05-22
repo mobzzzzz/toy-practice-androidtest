@@ -1,0 +1,33 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Run Android Build and Launch",
+      "type": "shell",
+      "command": "./gradlew assembleDebug && adb install -r app/build/outputs/apk/debug/app-debug.apk && adb shell monkey -p com.example.ondatest -c android.intent.category.LAUNCHER 1",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "presentation": {
+        "reveal": "always"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Format Current Kotlin File",
+      "type": "shell",
+      "command": "${workspaceFolder}/scripts/format-current.sh",
+      "args": ["${file}"],
+      "problemMatcher": [],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "presentation": {
+        "reveal": "never",
+        "panel": "shared"
+      }
+    }
+  ]
+}
