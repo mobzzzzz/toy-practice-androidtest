@@ -15,6 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: write    # GitHub Actions 변수 수정 권한 추가
     steps:
       - uses: actions/checkout@v4
         with:
