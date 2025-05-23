@@ -7,7 +7,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import kotlinx.coroutines.launch
-import toy.practice.androidtest.AppConfig
+import toy.practice.androidtest.config.AppConfig
 import toy.practice.androidtest.ui.components.WebPage
 
 @OptIn(ExperimentalMaterial3Api::class)
