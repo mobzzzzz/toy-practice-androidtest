@@ -20,6 +20,13 @@ jobs:
         with:
           fetch-depth: 0
           
+      - uses: ./.github/workflows/actions/create-version-props
+        with:
+          version_code: ${{ vars.VERSION_CODE }}
+          version_major: ${{ vars.VERSION_MAJOR }}
+          version_minor: ${{ vars.VERSION_MINOR }}
+          version_patch: ${{ vars.VERSION_PATCH }}
+          
       - name: Version Update & Tag Creation
         if: github.event.pull_request.merged == true
         id: version
