@@ -2,5 +2,7 @@
 <resources>
     <string name="app_name">Android Toy</string>
     <string name="app_display_name">안드로이드</string>
+    <string name="menu">메뉴</string>
+    <string name="menu_description">메뉴 열기</string>
     <string name="api_url">https://api.example.com</string>
 </resources>
