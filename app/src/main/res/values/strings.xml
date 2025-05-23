@@ -1,3 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">ondatest</string>
+    <string name="app_name">Android Toy</string>
+    <string name="app_display_name">안드로이드</string>
+    <string name="api_url">https://api.example.com</string>
 </resources>

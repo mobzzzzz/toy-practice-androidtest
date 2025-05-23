@@ -3,7 +3,9 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'  # 태그 푸시 시에만 실행
+      - 'v*'
+    branches:
+      - 'main'  # main 브랜치의 태그만 감지
 
 jobs:
   release:
@@ -23,6 +25,8 @@ jobs:
           distribution: 'temurin'
           cache: gradle
 
+      - uses: ./.github/workflows/actions/create-version-props
+
       - name: Build release APK
         run: ./gradlew assembleRelease
 
@@ -32,6 +36,8 @@ jobs:
           previous_tag=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
           
           echo "## 변경 사항" > CHANGELOG.md
+          echo "" >> CHANGELOG.md
+          echo "버전: ${{ vars.VERSION_MAJOR }}.${{ vars.VERSION_MINOR }}.${{ vars.VERSION_PATCH }}" >> CHANGELOG.md
           echo "" >> CHANGELOG.md
           
           if [ -z "$previous_tag" ]; then
@@ -45,7 +51,7 @@ jobs:
         with:
           files: |
             app/build/outputs/apk/release/app-release-unsigned.apk
-          name: ${{ github.ref_name }}
+          name: "v${{ vars.VERSION_MAJOR }}.${{ vars.VERSION_MINOR }}.${{ vars.VERSION_PATCH }}"
           body_path: CHANGELOG.md
           draft: false
           prerelease: false
