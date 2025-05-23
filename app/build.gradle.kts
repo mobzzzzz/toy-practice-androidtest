@@ -1,3 +1,6 @@
+import java.io.FileInputStream
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -12,8 +15,21 @@ android {
         applicationId = "toy.practice.androidtest"
         minSdk = 24
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+
+        val versionProps =
+            Properties().apply {
+                val propsFile = rootProject.file("version.properties")
+                if (propsFile.exists()) {
+                    load(FileInputStream(propsFile))
+                }
+            }
+
+        versionCode = (versionProps["VERSION_CODE"] as? String)?.toIntOrNull() ?: 1
+        val vMajor = (versionProps["VERSION_MAJOR"] as? String)?.toIntOrNull() ?: 1
+        val vMinor = (versionProps["VERSION_MINOR"] as? String)?.toIntOrNull() ?: 0
+        val vPatch = (versionProps["VERSION_PATCH"] as? String)?.toIntOrNull() ?: 0
+
+        versionName = "$vMajor.$vMinor.$vPatch"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
