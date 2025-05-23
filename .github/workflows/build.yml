@@ -1,0 +1,39 @@
+name: Build
+
+on:
+  pull_request:
+    types: [closed]
+    branches: ["dev", "main"]
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    if: github.event.pull_request.merged == true || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - uses: ./.github/workflows/actions/create-version-props
+
+      - name: Build APK
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]] || [[ "${{ github.base_ref }}" == "main" ]]; then
+            ./gradlew assembleRelease
+          else
+            ./gradlew assembleDebug
+          fi
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.ref == 'refs/tags/*' && 'release' || 'debug' }}-apk
+          path: app/build/outputs/apk/**/*.apk
