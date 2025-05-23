@@ -88,7 +88,8 @@ android {
         outputs
             .map { it as com.android.build.gradle.internal.api.BaseVariantOutputImpl }
             .forEach { output ->
-                output.outputFileName = "android-toy-${variant.buildType.name}.apk"
+                val versionName = variant.versionName ?: defaultConfig.versionName
+                output.outputFileName = "android-toy-$versionName-${variant.buildType.name}.apk"
             }
     }
 

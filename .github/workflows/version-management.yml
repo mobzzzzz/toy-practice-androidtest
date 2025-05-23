@@ -1,13 +1,17 @@
-name: Semantic Versioning
+name: Version Management
 
 on:
   pull_request:
     types: [closed]
     branches: ["dev", "main"]
+  push:
+    branches: ["main"]
+    tags:
+      - 'v*'
 
 jobs:
-  version-bump:
-    if: github.event.pull_request.merged == true
+  version-control:
+    if: github.event.pull_request.merged == true || github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -16,29 +20,23 @@ jobs:
         with:
           fetch-depth: 0
           
-      - name: Update version
+      - name: Version Update & Tag Creation
+        if: github.event.pull_request.merged == true
         id: version
         run: |
-          # dev로의 머지인 경우에만 버전 업데이트
           if [[ "${{ github.base_ref }}" == "dev" ]]; then
             if [[ "${{ github.head_ref }}" == major/* ]]; then
               gh variable set VERSION_MAJOR --body "$((${VERSION_MAJOR} + 1))"
               gh variable set VERSION_MINOR --body "0"
               gh variable set VERSION_PATCH --body "0"
-              version_type="major"
             elif [[ "${{ github.head_ref }}" == feat/* ]]; then
               gh variable set VERSION_MINOR --body "$((${VERSION_MINOR} + 1))"
               gh variable set VERSION_PATCH --body "0"
-              version_type="minor"
             else
               gh variable set VERSION_PATCH --body "$((${VERSION_PATCH} + 1))"
-              version_type="patch"
             fi
             gh variable set VERSION_CODE --body "$((${VERSION_CODE} + 1))"
-          fi
-          
-          # main으로의 머지인 경우 태그 생성
-          if [[ "${{ github.base_ref }}" == "main" ]]; then
+          elif [[ "${{ github.base_ref }}" == "main" ]]; then
             version="${{ vars.VERSION_MAJOR }}.${{ vars.VERSION_MINOR }}.${{ vars.VERSION_PATCH }}"
             git tag -a "v${version}" -m "Release version ${version}"
             git push origin "v${version}"
