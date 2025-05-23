@@ -25,14 +25,7 @@ jobs:
           distribution: 'temurin'
           cache: gradle
 
-      - name: Create version properties
-        run: |
-          cat > version.properties << EOF
-          VERSION_CODE=${{ vars.VERSION_CODE }}
-          VERSION_MAJOR=${{ vars.VERSION_MAJOR }}
-          VERSION_MINOR=${{ vars.VERSION_MINOR }}
-          VERSION_PATCH=${{ vars.VERSION_PATCH }}
-          EOF
+      - uses: ./.github/workflows/actions/create-version-props
 
       - name: Build release APK
         run: ./gradlew assembleRelease
