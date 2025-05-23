@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Android Toy (Debug)</string>
+    <string name="app_display_name">안드로이드 디버그</string>
+    <string name="api_url">https://dev-api.example.com</string>
+</resources>

@@ -6,8 +6,8 @@ import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
+import toy.practice.androidtest.AppConfig
 import toy.practice.androidtest.ui.components.WebPage
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -17,22 +17,10 @@ fun MainScreen() {
     val scope = rememberCoroutineScope()
 
     ModalNavigationDrawer(
-        drawerState = drawerState,
         drawerContent = {
             ModalDrawerSheet {
-                Spacer(modifier = Modifier.height(12.dp))
+                // 임시 드로어 아이템
                 NavigationDrawerItem(
-                    label = { Text("1") },
-                    selected = false,
-                    onClick = { /* TODO */ },
-                )
-                NavigationDrawerItem(
-                    label = { Text("2") },
-                    selected = false,
-                    onClick = { /* TODO */ },
-                )
-                NavigationDrawerItem(
-                    label = { Text("3") },
                     selected = false,
                     onClick = { /* TODO */ },
                 )
@@ -42,7 +30,8 @@ fun MainScreen() {
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = { Text("Web Browser") },
+                    // AppConfig에서 앱 이름 가져오기
+                    title = { Text(AppConfig.appDisplayName) },
                     navigationIcon = {
                         IconButton(onClick = {
                             scope.launch { drawerState.open() }

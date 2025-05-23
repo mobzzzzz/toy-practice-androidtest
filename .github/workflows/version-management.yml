@@ -1,0 +1,45 @@
+name: Version Management
+
+on:
+  pull_request:
+    types: [closed]
+    branches: ["dev", "main"]
+  push:
+    branches: ["main"]
+    tags:
+      - 'v*'
+
+jobs:
+  version-control:
+    if: github.event.pull_request.merged == true || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          
+      - name: Version Update & Tag Creation
+        if: github.event.pull_request.merged == true
+        id: version
+        run: |
+          if [[ "${{ github.base_ref }}" == "dev" ]]; then
+            if [[ "${{ github.head_ref }}" == major/* ]]; then
+              gh variable set VERSION_MAJOR --body "$((${VERSION_MAJOR} + 1))"
+              gh variable set VERSION_MINOR --body "0"
+              gh variable set VERSION_PATCH --body "0"
+            elif [[ "${{ github.head_ref }}" == feat/* ]]; then
+              gh variable set VERSION_MINOR --body "$((${VERSION_MINOR} + 1))"
+              gh variable set VERSION_PATCH --body "0"
+            else
+              gh variable set VERSION_PATCH --body "$((${VERSION_PATCH} + 1))"
+            fi
+            gh variable set VERSION_CODE --body "$((${VERSION_CODE} + 1))"
+          elif [[ "${{ github.base_ref }}" == "main" ]]; then
+            version="${{ vars.VERSION_MAJOR }}.${{ vars.VERSION_MINOR }}.${{ vars.VERSION_PATCH }}"
+            git tag -a "v${version}" -m "Release version ${version}"
+            git push origin "v${version}"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

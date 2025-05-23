@@ -165,4 +165,7 @@ gradle-app.setting
 ### Gradle Patch ###
 # Java heap dump
 
+# Version properties
+version.properties
+
 # End of https://www.toptal.com/developers/gitignore/api/macos,windows,android,gradle,kotlin,java
