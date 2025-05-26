@@ -152,15 +152,19 @@ jobs:
           echo "Building debug APK..."
           ./gradlew assembleDebug
           
-          # APK 파일 경로 확인
-          APK_PATH="app/build/outputs/apk/debug/app-debug.apk"
-          if [ -f "$APK_PATH" ]; then
-            echo "Debug APK built successfully at: $APK_PATH"
-            echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT
+          # APK 파일 경로 확인 (와일드카드 사용)
+          APK_DIR="app/build/outputs/apk/debug"
+          APK_PATTERN="*-debug.apk"
+          
+          # 디버그 APK 찾기
+          APK_FILE=$(find "$APK_DIR" -name "$APK_PATTERN" -type f)
+          if [ ! -z "$APK_FILE" ]; then
+            echo "Debug APK built successfully at: $APK_FILE"
+            echo "apk_path=$APK_FILE" >> $GITHUB_OUTPUT
           else
-            echo "Error: Debug APK not found at expected path: $APK_PATH"
-            echo "Listing contents of app/build/outputs/apk/debug/:"
-            ls -la app/build/outputs/apk/debug/
+            echo "Error: Debug APK not found matching pattern: $APK_PATTERN"
+            echo "Listing contents of $APK_DIR/:"
+            ls -la "$APK_DIR"
             exit 1
           fi
 
@@ -413,22 +417,24 @@ jobs:
           
           if [[ "${{ needs.build.outputs.build_type }}" == "release" ]]; then
             APK_DIR="app/build/outputs/apk/release"
-            OLD_APK="app-release-unsigned.apk"
+            APK_PATTERN="*-release-unsigned.apk"
             NEW_APK="${APP_ID}-${VERSION_NAME}-release-unsigned.apk"
           else
             APK_DIR="app/build/outputs/apk/debug"
-            OLD_APK="app-debug.apk"
+            APK_PATTERN="*-debug.apk"
             NEW_APK="${APP_ID}-${VERSION_NAME}-debug.apk"
           fi
 
-          if [ -f "${APK_DIR}/${OLD_APK}" ]; then
-            cd ${APK_DIR}
-            mv "${OLD_APK}" "${NEW_APK}"
-            echo "APK renamed: ${OLD_APK} -> ${NEW_APK}"
+          # 현재 APK 파일 찾기
+          OLD_APK=$(find "$APK_DIR" -name "$APK_PATTERN" -type f)
+          if [ ! -z "$OLD_APK" ]; then
+            cd $(dirname "$OLD_APK")
+            mv "$(basename "$OLD_APK")" "$NEW_APK"
+            echo "APK renamed: $(basename "$OLD_APK") -> $NEW_APK"
           else
-            echo "Warning: APK file not found at ${APK_DIR}/${OLD_APK}"
+            echo "Warning: APK file not found matching pattern: $APK_PATTERN"
             echo "Contents of ${APK_DIR}:"
-            ls -la ${APK_DIR} || echo "Directory not found"
+            ls -la "${APK_DIR}" || echo "Directory not found"
             exit 1
           fi
 
