@@ -4,7 +4,6 @@
     "gitlens.ai.vscode.model": "copilot:claude-3.5-sonnet",
     "gitlens.ai.generateCommitMessage.customInstructions": "커밋 메시지는 한글로 작성하고 다음 형식을 따라줘: 태그: 변경 요약. 예를 들어 feat: 로그인 기능 추가 또는 fix: 소셜 로그인 버그 수정. 타이틀은 간단하게 요약하고 설명은 한 줄 이내로 간결하게 써줘. 태그는 흔히 사용하는 Commit Message Convention을 따르되, 필요에 따라 추가적인 태그를 사용해도 좋아. 예를 들어 feat, fix, chore, docs, style, refactor, perf, test 등.",
     "gitlens.ai.explainChanges.customInstructions": "한국어로 작성하고 실무에서 주로 쓰는 익숙한 표현들 위주로 사용해줘",
-    "gitlens.ai.generateCommitMessage.customInstructions": "한국어로 작성하고 실무에서 주로 쓰는 익숙한 표현들 위주로 사용해줘",
     "gitlens.ai.generateStashMessage.customInstructions": "한국어로 작성하고 실무에서 주로 쓰는 익숙한 표현들 위주로 사용해줘",
     "gitlens.ai.generateCreatePullRequest.customInstructions": "한국어로 작성하고 실무에서 주로 쓰는 익숙한 표현들 위주로 사용해줘",
     "git.ignoreRebaseWarning": true,

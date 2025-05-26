@@ -15,40 +15,53 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      actions: write    # GitHub Actions 변수 수정 권한 추가
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # GitHub CLI 인증 단계 추가
-      - name: Authenticate GitHub CLI
-        run: |
-          gh auth setup-git
-          gh auth status
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          
       - name: Version Update & Tag Creation
         if: github.event.pull_request.merged == true
         id: version
         run: |
+          # 최신 태그 가져오기 (beta 또는 릴리즈)
+          latest_tag=$(git tag -l "v*" --sort=-v:refname | head -n 1)
+          
           if [[ "${{ github.base_ref }}" == "dev" ]]; then
-            if [[ "${{ github.head_ref }}" == major/* ]]; then
-              gh variable set VERSION_MAJOR --body "$((${VERSION_MAJOR} + 1))"
-              gh variable set VERSION_MINOR --body "0"
-              gh variable set VERSION_PATCH --body "0"
-            elif [[ "${{ github.head_ref }}" == feat/* ]]; then
-              gh variable set VERSION_MINOR --body "$((${VERSION_MINOR} + 1))"
-              gh variable set VERSION_PATCH --body "0"
+            # beta 버전 생성을 위한 타임스탬프
+            timestamp=$(date +%Y%m%d%H%M%S)
+            
+            if [ -z "$latest_tag" ]; then
+              # 태그가 없는 경우 v1.0.0-beta.timestamp 생성
+              new_version="v1.0.0-beta.$timestamp"
             else
-              gh variable set VERSION_PATCH --body "$((${VERSION_PATCH} + 1))"
+              # 기존 버전에서 증가
+              base_version=$(echo $latest_tag | sed 's/-beta\.[0-9]\+//' | sed 's/^v//')
+              IFS='.' read -r major minor patch <<< "$base_version"
+              
+              case "${{ github.head_ref }}" in
+                major/*)
+                  new_version="v$((major + 1)).0.0-beta.$timestamp"
+                  ;;
+                feat/*)
+                  new_version="v$major.$((minor + 1)).0-beta.$timestamp"
+                  ;;
+                fix/* | *)
+                  new_version="v$major.$minor.$((patch + 1))-beta.$timestamp"
+                  ;;
+              esac
             fi
-            gh variable set VERSION_CODE --body "$((${VERSION_CODE} + 1))"
+            
+            echo "Creating beta tag: $new_version"
+            git tag -a "$new_version" -m "Beta release $new_version"
+            git push origin "$new_version"
+            
           elif [[ "${{ github.base_ref }}" == "main" ]]; then
-            version="${{ vars.VERSION_MAJOR }}.${{ vars.VERSION_MINOR }}.${{ vars.VERSION_PATCH }}"
-            git tag -a "v${version}" -m "Release version ${version}"
-            git push origin "v${version}"
+            # beta 태그에서 릴리즈 버전 추출
+            latest_beta=$(git tag -l "v*-beta.*" --sort=-v:refname | head -n 1)
+            release_version=$(echo $latest_beta | sed 's/-beta\.[0-9]\+//')
+            
+            echo "Creating release tag: $release_version"
+            git tag -a "$release_version" -m "Release version $release_version"
+            git push origin "$release_version"
           fi
-        env:
-          GH_TOKEN: ${{ secrets.ADMIN_TOKEN }}  # GITHUB_TOKEN 대신 ADMIN_TOKEN 사용

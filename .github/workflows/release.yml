@@ -26,11 +26,6 @@ jobs:
           cache: gradle
 
       - uses: ./.github/workflows/actions/create-version-props
-        with:
-          version_code: ${{ vars.VERSION_CODE }}
-          version_major: ${{ vars.VERSION_MAJOR }}
-          version_minor: ${{ vars.VERSION_MINOR }}
-          version_patch: ${{ vars.VERSION_PATCH }}
 
       - name: Build release APK
         run: ./gradlew assembleRelease
@@ -38,11 +33,12 @@ jobs:
       - name: Generate Release Notes
         id: release_notes
         run: |
+          version=$(git describe --tags --abbrev=0)
           previous_tag=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
           
           echo "## 변경 사항" > CHANGELOG.md
           echo "" >> CHANGELOG.md
-          echo "버전: ${{ vars.VERSION_MAJOR }}.${{ vars.VERSION_MINOR }}.${{ vars.VERSION_PATCH }}" >> CHANGELOG.md
+          echo "버전: $version" >> CHANGELOG.md
           echo "" >> CHANGELOG.md
           
           if [ -z "$previous_tag" ]; then
