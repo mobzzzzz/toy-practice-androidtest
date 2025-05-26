@@ -1,16 +1,16 @@
 name: Build
 
 on:
+  workflow_call:
+    inputs:
+      version_code:
+        required: true
+        type: string
   pull_request:
-    types: [closed]
     branches: ["dev", "main"]
-  push:
-    tags:
-      - 'v*'
 
 jobs:
   build:
-    if: github.event.pull_request.merged == true || github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -23,6 +23,8 @@ jobs:
           cache: gradle
 
       - uses: ./.github/workflows/actions/create-version-props
+        with:
+          version_code: ${{ inputs.version_code || vars.VERSION_CODE }}
 
       - name: Build APK
         run: |

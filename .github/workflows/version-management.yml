@@ -3,7 +3,7 @@ name: Version Management
 on:
   pull_request:
     types: [closed]
-    branches: ["dev", "main"]
+    branches: ["dev"]
   push:
     branches: ["main"]
     tags:
@@ -11,14 +11,38 @@ on:
 
 jobs:
   version-control:
-    if: github.event.pull_request.merged == true || github.event_name == 'push'
+    if: |
+      (github.event.pull_request.merged == true && github.base_ref == 'dev') ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: write
+    outputs:
+      version_code: ${{ steps.version-update.outputs.new_version }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Update Version Code
+        if: github.event.pull_request.merged == true && github.base_ref == 'dev'  # dev로 머지될 때만 증가
+        id: version-update
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const currentVersion = parseInt('${{ vars.VERSION_CODE }}') || 0;
+            const newVersion = currentVersion + 1;
+            
+            await github.rest.actions.updateRepoVariable({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              name: 'VERSION_CODE',
+              value: newVersion.toString()
+            });
+            
+            console.log(`Version Code updated: ${currentVersion} → ${newVersion}`);
+            core.setOutput('new_version', newVersion.toString());
 
       - name: Version Update & Tag Creation
         if: github.event.pull_request.merged == true
@@ -65,3 +89,9 @@ jobs:
             git tag -a "$release_version" -m "Release version $release_version"
             git push origin "$release_version"
           fi
+
+  build:
+    needs: version-control
+    uses: ./.github/workflows/build.yml
+    with:
+      version_code: ${{ needs.version-control.outputs.version_code }}

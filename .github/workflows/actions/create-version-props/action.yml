@@ -1,16 +1,20 @@
 name: 'Create Version Properties'
 description: 'Creates version.properties file from git tags'
 
+inputs:
+  version_code:
+    description: '현재 버전 코드'
+    required: true
+
 runs:
   using: "composite"
   steps:
     - name: Create version properties
       shell: bash
       run: |
-        # 태그 존재 여부 확인
+        # version.properties 파일 생성을 위한 버전 정보 추출
         if ! git tag -l "v*" | grep -q .; then
           # 태그가 없는 경우 (출시 전)
-          version_code="1"
           version_major="0"
           version_minor="0"
           version_patch="0"
@@ -36,9 +40,6 @@ runs:
             fi
           fi
 
-          # 버전 코드는 커밋 수로 대체 (최소값 1)
-          version_code=$(git rev-list --count HEAD || echo "1")
-          
           # 베타 버전 여부와 타임스탬프 추출
           if [[ $latest_tag =~ -beta\.[0-9]+ ]]; then
             is_beta="true"
@@ -55,9 +56,9 @@ runs:
           version_patch="${version_parts[2]}"
         fi
         
-        # version.properties 생성
+        # version.properties 생성 (version_code는 입력값 사용)
         cat > version.properties << EOF
-        VERSION_CODE=$version_code
+        VERSION_CODE=${{ inputs.version_code }}
         VERSION_MAJOR=$version_major
         VERSION_MINOR=$version_minor
         VERSION_PATCH=$version_patch
@@ -67,6 +68,6 @@ runs:
 
         echo "Created version.properties with:"
         echo "Version: $version_major.$version_minor.$version_patch"
+        echo "Version Code: ${{ inputs.version_code }}"
         echo "Is Beta: $is_beta"
         [[ "$is_beta" == "true" ]] && echo "Beta Timestamp: $timestamp"
-        echo "Version Code: $version_code"
