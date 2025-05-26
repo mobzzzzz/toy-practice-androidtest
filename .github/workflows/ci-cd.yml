@@ -259,13 +259,19 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         run: ./gradlew assembleRelease
 
-      # 그 외의 경우 디버그 빌드
-      - name: Build Debug APK
-        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+      # PR 검증인 경우 디버그 빌드만
+      - name: Build Debug APK (PR Validation)
+        if: github.event_name == 'pull_request'
         run: ./gradlew assembleDebug
 
-      # APK 이름 변경
+      # 머지된 경우 디버그 빌드 및 아티팩트 업로드
+      - name: Build Debug APK (Merge)
+        if: github.event.pull_request.merged == true || (github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/v'))
+        run: ./gradlew assembleDebug
+
+      # APK 이름 변경 (머지나 태그 푸시 시에만)
       - name: Rename APK
+        if: github.event.pull_request.merged == true || github.event_name == 'push'
         run: |
           WORKSPACE_DIR=$(pwd)
           VERSION_NAME=$(cat version.properties | grep "VERSION_NAME" | cut -d'=' -f2)
@@ -290,8 +296,16 @@ jobs:
             echo "Warning: APK file not found at ${APK_DIR}/${OLD_APK}"
             echo "Contents of ${APK_DIR}:"
             ls -la ${APK_DIR} || echo "Directory not found"
-            exit 0  # 에러로 처리하지 않고 계속 진행
+            exit 0
           fi
+
+      # 디버그 APK 아티팩트 업로드 (머지 시에만)
+      - name: Upload Debug APK
+        if: github.event.pull_request.merged == true || (github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/v'))
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-apk
+          path: app/build/outputs/apk/debug/*-debug.apk
 
       # 릴리즈 노트 생성 (태그 푸시 시에만)
       - name: Generate Release Notes
@@ -311,14 +325,6 @@ jobs:
           else
             git log --pretty=format:"- %s" ${previous_tag}..HEAD >> CHANGELOG.md
           fi
-
-      # 디버그 APK 아티팩트 업로드
-      - name: Upload Debug APK
-        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: debug-apk
-          path: app/build/outputs/apk/debug/*-debug.apk
 
       # GitHub 릴리즈 생성 (태그 푸시 시에만)
       - name: Create Release
