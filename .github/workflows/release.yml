@@ -32,6 +32,12 @@ jobs:
       - name: Build release APK
         run: ./gradlew assembleRelease
 
+      - name: Rename APK
+        run: |
+          cd app/build/outputs/apk/release
+          VERSION_NAME=$(cat ../../../../version.properties | grep "VERSION_NAME" | cut -d'=' -f2)
+          mv app-release-unsigned.apk toy.practice.androidtest-${VERSION_NAME}-release-unsigned.apk
+
       - name: Generate Release Notes
         id: release_notes
         run: |
@@ -53,7 +59,7 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            app/build/outputs/apk/release/app-release-unsigned.apk
+            app/build/outputs/apk/release/toy.practice.androidtest-*-release-unsigned.apk
           name: "v${{ vars.VERSION_MAJOR }}.${{ vars.VERSION_MINOR }}.${{ vars.VERSION_PATCH }}"
           body_path: CHANGELOG.md
           draft: false
