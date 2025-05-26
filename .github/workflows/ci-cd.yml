@@ -152,17 +152,17 @@ jobs:
             git push origin "$release_version"
           fi
 
-  # 빌드 및 배포 작업
-  build-and-deploy:
-    name: Build and Deploy
+  # 빌드 작업
+  build:
+    name: Build APK
     needs: [version-control]
     if: |
       always() &&
       (github.event_name == 'pull_request' && needs.version-control.result == 'skipped') ||
       (needs.version-control.result == 'success')
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
+    outputs:
+      build_type: ${{ steps.set-build-type.outputs.build_type }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -175,7 +175,31 @@ jobs:
           distribution: 'temurin'
           cache: gradle
 
-      # version.properties 생성 (PR 검증 시에는 생략)
+      # 빌드 타입 설정
+      - name: Set Build Type
+        id: set-build-type
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            echo "build_type=release" >> $GITHUB_OUTPUT
+          else
+            echo "build_type=debug" >> $GITHUB_OUTPUT
+          fi
+
+      # PR 검증용 임시 version.properties 생성
+      - name: Create Temporary Version Properties for PR
+        if: github.event_name == 'pull_request'
+        run: |
+          cat > version.properties << EOF
+          VERSION_CODE=${{ vars.VERSION_CODE }}
+          VERSION_MAJOR=0
+          VERSION_MINOR=0
+          VERSION_PATCH=0
+          IS_BETA=true
+          TIMESTAMP=$(date +%Y%m%d%H%M%S)
+          VERSION_NAME=0.0.0-pr
+          EOF
+
+      # 정식 version.properties 생성
       - name: Create Version Properties
         if: github.event_name != 'pull_request'
         run: |
@@ -240,44 +264,53 @@ jobs:
           echo "Is Beta: $is_beta"
           [[ "$is_beta" == "true" ]] && echo "Beta Timestamp: $timestamp"
 
-      # PR 검증용 임시 version.properties 생성
-      - name: Create Temporary Version Properties for PR
-        if: github.event_name == 'pull_request'
+      # APK 빌드
+      - name: Build APK
         run: |
-          cat > version.properties << EOF
-          VERSION_CODE=${{ vars.VERSION_CODE }}
-          VERSION_MAJOR=0
-          VERSION_MINOR=0
-          VERSION_PATCH=0
-          IS_BETA=true
-          TIMESTAMP=$(date +%Y%m%d%H%M%S)
-          VERSION_NAME=0.0.0-pr
-          EOF
+          if [[ "${{ steps.set-build-type.outputs.build_type }}" == "release" ]]; then
+            ./gradlew assembleRelease
+          else
+            ./gradlew assembleDebug
+          fi
 
-      # 태그 푸시 이벤트인 경우 릴리즈 빌드
-      - name: Build Release APK
-        if: startsWith(github.ref, 'refs/tags/v')
-        run: ./gradlew assembleRelease
+      # 빌드된 APK를 아티팩트로 업로드 (다음 job에서 사용)
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-output
+          path: |
+            app/build/outputs/apk/
+            version.properties
+          retention-days: 1
 
-      # PR 검증인 경우 디버그 빌드만
-      - name: Build Debug APK (PR Validation)
-        if: github.event_name == 'pull_request'
-        run: ./gradlew assembleDebug
+  # 배포 작업
+  deploy:
+    name: Deploy APK
+    needs: [build, version-control]
+    if: |
+      always() &&
+      needs.build.result == 'success' &&
+      (github.event.pull_request.merged == true || github.event_name == 'push')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        
+      # 이전 job의 빌드 결과물 다운로드
+      - name: Download Build Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: build-output
+          path: .
 
-      # 머지된 경우 디버그 빌드 및 아티팩트 업로드
-      - name: Build Debug APK (Merge)
-        if: github.event.pull_request.merged == true || (github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/v'))
-        run: ./gradlew assembleDebug
-
-      # APK 이름 변경 (머지나 태그 푸시 시에만)
+      # APK 이름 변경
       - name: Rename APK
-        if: github.event.pull_request.merged == true || github.event_name == 'push'
         run: |
-          WORKSPACE_DIR=$(pwd)
           VERSION_NAME=$(cat version.properties | grep "VERSION_NAME" | cut -d'=' -f2)
           APP_ID=$(./gradlew -q printApplicationId | tail -n 1)
           
-          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+          if [[ "${{ needs.build.outputs.build_type }}" == "release" ]]; then
             APK_DIR="app/build/outputs/apk/release"
             OLD_APK="app-release-unsigned.apk"
             NEW_APK="${APP_ID}-${VERSION_NAME}-release-unsigned.apk"
@@ -287,7 +320,6 @@ jobs:
             NEW_APK="${APP_ID}-${VERSION_NAME}-debug.apk"
           fi
 
-          # APK 파일 존재 여부 확인
           if [ -f "${APK_DIR}/${OLD_APK}" ]; then
             cd ${APK_DIR}
             mv "${OLD_APK}" "${NEW_APK}"
@@ -296,12 +328,12 @@ jobs:
             echo "Warning: APK file not found at ${APK_DIR}/${OLD_APK}"
             echo "Contents of ${APK_DIR}:"
             ls -la ${APK_DIR} || echo "Directory not found"
-            exit 0
+            exit 1
           fi
 
-      # 디버그 APK 아티팩트 업로드 (머지 시에만)
+      # 디버그 APK 아티팩트 업로드
       - name: Upload Debug APK
-        if: github.event.pull_request.merged == true || (github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/v'))
+        if: needs.build.outputs.build_type == 'debug'
         uses: actions/upload-artifact@v4
         with:
           name: debug-apk
@@ -309,7 +341,7 @@ jobs:
 
       # 릴리즈 노트 생성 (태그 푸시 시에만)
       - name: Generate Release Notes
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: needs.build.outputs.build_type == 'release'
         id: release_notes
         run: |
           version=$(git describe --tags --abbrev=0)
@@ -328,7 +360,7 @@ jobs:
 
       # GitHub 릴리즈 생성 (태그 푸시 시에만)
       - name: Create Release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: needs.build.outputs.build_type == 'release'
         uses: softprops/action-gh-release@v1
         with:
           files: |
