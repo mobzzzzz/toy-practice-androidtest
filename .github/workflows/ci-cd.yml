@@ -88,9 +88,8 @@ jobs:
   version-management:
     name: Version Management
     if: |
-      (github.event_name == 'pull_request_target' && github.event.pull_request.merged == true && github.base_ref == 'dev') ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-      github.ref_type == 'tag'
+      (github.event_name == 'pull_request_target' && github.event.pull_request.merged == true) ||
+      (github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')))
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -178,9 +177,8 @@ jobs:
     name: Build APK
     needs: [version-management]
     if: |
-      (github.event_name == 'pull_request_target' && github.event.pull_request.merged == true && github.base_ref == 'dev') ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-      github.ref_type == 'tag'
+      (github.event_name == 'pull_request_target' && github.event.pull_request.merged == true) ||
+      (github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')))
     runs-on: ubuntu-latest
     outputs:
       build_type: ${{ steps.set-build-type.outputs.build_type }}
@@ -294,9 +292,8 @@ jobs:
     name: Deploy APK
     needs: [build, version-management]
     if: |
-      (github.event_name == 'pull_request_target' && github.event.pull_request.merged == true && github.base_ref == 'dev') ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-      github.ref_type == 'tag'
+      (github.event_name == 'pull_request_target' && github.event.pull_request.merged == true) ||
+      (github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')))
     runs-on: ubuntu-latest
     permissions:
       contents: write
