@@ -1,7 +1,7 @@
 name: Android Version Code Management
 
 on:
-  # PR 머지 시에만 versionCode 업데이트 (더 안전한 접근)
+  # PR 머지 시에만 versionCode 업데이트
   push:
     branches: ["dev", "main"]
   
@@ -13,6 +13,7 @@ on:
 jobs:
   # PR 단계: versionCode 충돌 검증
   validate-version-pr:
+    name: "Validate Version PR"
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
@@ -94,7 +95,10 @@ jobs:
 
   # 머지 후: 실제 versionCode 업데이트
   update-version-on-merge:
-    if: github.event_name == 'push'
+    name: "Update Version on Merge"
+    if: |
+      github.event_name == 'push' && 
+      (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     permissions:
       contents: write
