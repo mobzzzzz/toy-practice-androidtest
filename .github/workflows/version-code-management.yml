@@ -35,16 +35,14 @@ jobs:
           
           # versionCode가 감소했는지 확인
           if [ "$pr_version" -lt "$base_version" ]; then
-            echo "❌ Error: versionCode cannot be decreased ($pr_version < $base_version)"
+            echo "❌ 오류: 버전 코드는 감소할 수 없습니다 ($pr_version < $base_version)"
             exit 1
           fi
           
           # versionCode가 같은지 확인 (머지 시 충돌 가능성)
           if [ "$pr_version" -eq "$base_version" ]; then
-            echo "⚠️ Warning: versionCode is same as base. Will be auto-incremented on merge."
+            echo "⚠️ 주의: 현재 버전이 타겟 브랜치와 동일합니다. 머지 시 자동으로 증가됩니다."
           fi
-          
-          rm -f temp_build.gradle.kts
 
       - name: Comment PR Status
         uses: actions/github-script@v7
@@ -52,18 +50,24 @@ jobs:
           script: |
             const fs = require('fs');
             
-            // versionCode 정보 읽기
             const buildGradle = fs.readFileSync('app/build.gradle.kts', 'utf8');
             const versionMatch = buildGradle.match(/versionCode = (\d+)/);
-            const currentVersion = versionMatch ? versionMatch[1] : 'unknown';
+            const currentVersion = versionMatch ? versionMatch[1] : '확인 불가';
+            
+            const message = [
+              '<!--NO_NOTIFICATION-->',
+              '📱 **안드로이드 버전 코드 상태**',
+              '',
+              `현재 PR의 버전 코드: \`${currentVersion}\``,
+              '',
+              'ℹ️ **참고**: 다른 PR과의 충돌을 방지하기 위해 최종 버전 코드는 PR 머지 시점에 자동으로 할당됩니다.'
+            ].join('\n');
             
             await github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: `📱 **Android Version Code Status**\n\n` +
-                    `Current PR versionCode: \`${currentVersion}\`\n\n` +
-                    `ℹ️ **Note**: Final versionCode will be automatically assigned when this PR is merged to ensure no conflicts with other concurrent PRs.`
+              body: message
             });
 
   # 머지 후: 실제 versionCode 업데이트
@@ -117,10 +121,10 @@ jobs:
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
           git add app/build.gradle.kts
-          git commit -m "chore: auto-increment versionCode to ${{ steps.version-update.outputs.new_version }}
+          git commit -m "chore: 버전 코드 자동 증가 (${{ steps.version-update.outputs.new_version }})
 
-          Previous: ${{ steps.version-update.outputs.current_version }}
-          New: ${{ steps.version-update.outputs.new_version }}
+          이전: ${{ steps.version-update.outputs.current_version }}
+          현재: ${{ steps.version-update.outputs.new_version }}
           
           [skip ci]"
           
