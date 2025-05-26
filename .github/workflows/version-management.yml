@@ -51,4 +51,4 @@ jobs:
             git push origin "v${version}"
           fi
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.ADMIN_TOKEN }}  # GITHUB_TOKEN 대신 ADMIN_TOKEN 사용
