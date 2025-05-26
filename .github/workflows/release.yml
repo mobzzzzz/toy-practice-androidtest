@@ -34,10 +34,11 @@ jobs:
 
       - name: Rename APK
         run: |
+          WORKSPACE_DIR=$(pwd)
+          VERSION_NAME=$(cat version.properties | grep "VERSION_NAME" | cut -d'=' -f2)
+          APP_ID=$(./gradlew -q printApplicationId | tail -n 1)
           cd app/build/outputs/apk/release
-          VERSION_NAME=$(cat ../../../../version.properties | grep "VERSION_NAME" | cut -d'=' -f2)
-          APP_ID=$(./../../../../gradlew -q printApplicationId | tail -n 1)
-          mv app-release-unsigned.apk ${APP_ID}-${VERSION_NAME}-release-unsigned.apk
+          mv app-release-unsigned.apk "${APP_ID}-${VERSION_NAME}-release-unsigned.apk"
 
       - name: Generate Release Notes
         id: release_notes

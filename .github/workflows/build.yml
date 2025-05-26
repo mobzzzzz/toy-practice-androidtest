@@ -31,10 +31,11 @@ jobs:
 
       - name: Rename APK
         run: |
+          WORKSPACE_DIR=$(pwd)
+          VERSION_NAME=$(cat version.properties | grep "VERSION_NAME" | cut -d'=' -f2)
+          APP_ID=$(./gradlew -q printApplicationId | tail -n 1)
           cd app/build/outputs/apk/debug
-          VERSION_NAME=$(cat ../../../../version.properties | grep "VERSION_NAME" | cut -d'=' -f2)
-          APP_ID=$(./../../../../gradlew -q printApplicationId | tail -n 1)
-          mv app-debug.apk ${APP_ID}-${VERSION_NAME}-debug.apk
+          mv app-debug.apk "${APP_ID}-${VERSION_NAME}-debug.apk"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4

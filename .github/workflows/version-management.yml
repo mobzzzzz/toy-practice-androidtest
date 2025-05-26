@@ -51,6 +51,10 @@ jobs:
         if: github.event.pull_request.merged == true
         id: version
         run: |
+          # Git 설정
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+          
           # 최신 태그 가져오기 (beta 또는 릴리즈)
           latest_tag=$(git tag -l "v*" --sort=-v:refname | head -n 1)
           
