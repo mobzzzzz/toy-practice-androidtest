@@ -23,11 +23,6 @@ jobs:
           cache: gradle
 
       - uses: ./.github/workflows/actions/create-version-props
-        with:
-          version_code: ${{ vars.VERSION_CODE }}
-          version_major: ${{ vars.VERSION_MAJOR }}
-          version_minor: ${{ vars.VERSION_MINOR }}
-          version_patch: ${{ vars.VERSION_PATCH }}
 
       - name: Build APK
         run: |
