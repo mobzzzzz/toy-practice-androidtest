@@ -133,3 +133,10 @@ dependencies {
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
 }
+
+// Add task to print applicationId
+tasks.register("printApplicationId") {
+    doLast {
+        println(android.defaultConfig.applicationId)
+    }
+}

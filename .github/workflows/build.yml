@@ -33,10 +33,11 @@ jobs:
         run: |
           cd app/build/outputs/apk/debug
           VERSION_NAME=$(cat ../../../../version.properties | grep "VERSION_NAME" | cut -d'=' -f2)
-          mv app-debug.apk toy.practice.androidtest-${VERSION_NAME}-debug.apk
+          APP_ID=$(./../../../../gradlew -q printApplicationId | tail -n 1)
+          mv app-debug.apk ${APP_ID}-${VERSION_NAME}-debug.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: debug-apk
-          path: app/build/outputs/apk/debug/toy.practice.androidtest-*.apk
+          path: app/build/outputs/apk/debug/*-debug.apk
