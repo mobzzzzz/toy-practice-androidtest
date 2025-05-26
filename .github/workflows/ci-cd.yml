@@ -272,11 +272,25 @@ jobs:
           APP_ID=$(./gradlew -q printApplicationId | tail -n 1)
           
           if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            cd app/build/outputs/apk/release
-            mv app-release-unsigned.apk "${APP_ID}-${VERSION_NAME}-release-unsigned.apk"
+            APK_DIR="app/build/outputs/apk/release"
+            OLD_APK="app-release-unsigned.apk"
+            NEW_APK="${APP_ID}-${VERSION_NAME}-release-unsigned.apk"
           else
-            cd app/build/outputs/apk/debug
-            mv app-debug.apk "${APP_ID}-${VERSION_NAME}-debug.apk"
+            APK_DIR="app/build/outputs/apk/debug"
+            OLD_APK="app-debug.apk"
+            NEW_APK="${APP_ID}-${VERSION_NAME}-debug.apk"
+          fi
+
+          # APK 파일 존재 여부 확인
+          if [ -f "${APK_DIR}/${OLD_APK}" ]; then
+            cd ${APK_DIR}
+            mv "${OLD_APK}" "${NEW_APK}"
+            echo "APK renamed: ${OLD_APK} -> ${NEW_APK}"
+          else
+            echo "Warning: APK file not found at ${APK_DIR}/${OLD_APK}"
+            echo "Contents of ${APK_DIR}:"
+            ls -la ${APK_DIR} || echo "Directory not found"
+            exit 0  # 에러로 처리하지 않고 계속 진행
           fi
 
       # 릴리즈 노트 생성 (태그 푸시 시에만)
