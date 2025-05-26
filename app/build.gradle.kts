@@ -118,7 +118,9 @@ android {
                         }
                     }
 
-                output.outputFileName = "android-toy-$finalVersionName-${variant.buildType.name}.apk"
+                // applicationId를 사용하여 APK 파일명 생성
+                val appName = variant.applicationId.replace(".", "-")
+                output.outputFileName = "$appName-$finalVersionName-${variant.buildType.name}.apk"
             }
     }
 
