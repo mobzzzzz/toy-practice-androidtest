@@ -43,20 +43,9 @@ android {
         val vMajor = (versionProps["VERSION_MAJOR"] as? String)?.toIntOrNull() ?: 0
         val vMinor = (versionProps["VERSION_MINOR"] as? String)?.toIntOrNull() ?: 0
         val vPatch = (versionProps["VERSION_PATCH"] as? String)?.toIntOrNull() ?: 1
-        val isBeta = (versionProps["IS_BETA"] as? String)?.toBoolean() ?: true
-        val timestamp = (versionProps["TIMESTAMP"] as? String)
 
-        // 버전명 생성
-        versionName =
-            buildString {
-                append("$vMajor.$vMinor.$vPatch")
-                if (isBeta) {
-                    append("-beta")
-                    if (!timestamp.isNullOrEmpty()) {
-                        append(".$timestamp")
-                    }
-                }
-            }
+        // 기본 버전명 (x.y.z)
+        versionName = "$vMajor.$vMinor.$vPatch"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -103,8 +92,33 @@ android {
         outputs
             .map { it as com.android.build.gradle.internal.api.BaseVariantOutputImpl }
             .forEach { output ->
-                val versionName = variant.versionName ?: defaultConfig.versionName
-                output.outputFileName = "android-toy-$versionName-${variant.buildType.name}.apk"
+                val versionProps = loadVersionProperties()
+                val baseVersionName = variant.versionName ?: defaultConfig.versionName
+
+                // 빌드 타입에 따라 버전명 결정
+                val finalVersionName =
+                    when {
+                        // 릴리즈 빌드는 항상 정식 버전명 사용
+                        variant.buildType.name == "release" -> baseVersionName
+
+                        // 디버그 빌드는 beta 태그 추가
+                        else -> {
+                            val isBeta = (versionProps["IS_BETA"] as? String)?.toBoolean() ?: true
+                            val timestamp = (versionProps["TIMESTAMP"] as? String)
+
+                            buildString {
+                                append(baseVersionName)
+                                if (isBeta) {
+                                    append("-beta")
+                                    if (!timestamp.isNullOrEmpty()) {
+                                        append(".$timestamp")
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                output.outputFileName = "android-toy-$finalVersionName-${variant.buildType.name}.apk"
             }
     }
 
