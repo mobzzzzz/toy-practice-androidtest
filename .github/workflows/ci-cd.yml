@@ -175,8 +175,9 @@ jobs:
           distribution: 'temurin'
           cache: gradle
 
-      # version.properties 생성
+      # version.properties 생성 (PR 검증 시에는 생략)
       - name: Create Version Properties
+        if: github.event_name != 'pull_request'
         run: |
           # version.properties 파일 생성을 위한 버전 정보 추출
           if ! git tag -l "v*" | grep -q .; then
@@ -238,6 +239,20 @@ jobs:
           echo "Version Code: ${{ needs.version-control.outputs.version_code || vars.VERSION_CODE }}"
           echo "Is Beta: $is_beta"
           [[ "$is_beta" == "true" ]] && echo "Beta Timestamp: $timestamp"
+
+      # PR 검증용 임시 version.properties 생성
+      - name: Create Temporary Version Properties for PR
+        if: github.event_name == 'pull_request'
+        run: |
+          cat > version.properties << EOF
+          VERSION_CODE=${{ vars.VERSION_CODE }}
+          VERSION_MAJOR=0
+          VERSION_MINOR=0
+          VERSION_PATCH=0
+          IS_BETA=true
+          TIMESTAMP=$(date +%Y%m%d%H%M%S)
+          VERSION_NAME=0.0.0-pr
+          EOF
 
       # 태그 푸시 이벤트인 경우 릴리즈 빌드
       - name: Build Release APK
