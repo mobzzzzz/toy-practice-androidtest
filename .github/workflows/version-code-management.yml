@@ -49,27 +49,48 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            
+      
             const buildGradle = fs.readFileSync('app/build.gradle.kts', 'utf8');
             const versionMatch = buildGradle.match(/versionCode = (\d+)/);
             const currentVersion = versionMatch ? versionMatch[1] : '확인 불가';
-            
-            const comment = await github.rest.issues.createComment({
+
+            const message = [
+              '📱 **안드로이드 버전 코드 상태**',
+              '',
+              `현재 PR의 버전 코드: \`${currentVersion}\``,
+              '',
+              'ℹ️ **참고**: 다른 PR과의 충돌을 방지하기 위해 최종 버전 코드는 PR 머지 시점에 자동으로 할당됩니다.'
+            ].join('\n');
+
+            // 기존 봇 댓글 찾기
+            const comments = await github.rest.issues.listComments({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: `📱 **안드로이드 버전 코드 상태**\n\n` +
-                    `현재 PR의 버전 코드: \`${currentVersion}\`\n\n` +
-                    `ℹ️ **참고**: 다른 PR과의 충돌을 방지하기 위해 최종 버전 코드는 PR 머지 시점에 자동으로 할당됩니다.`
             });
-            
-            // 코멘트 자동 최소화
-            await github.rest.issues.minimizeComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              comment_id: comment.data.id,
-              classifier: 'OUTDATED'
-            });
+
+            const botComment = comments.data.find(comment => 
+              comment.user.login === 'github-actions[bot]' && 
+              comment.body.includes('📱 **안드로이드 버전 코드 상태**')
+            );
+
+            if (botComment) {
+              // 기존 댓글 업데이트 (알림 안 감)
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: message
+              });
+            } else {
+              // 새 댓글 생성
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: message
+              });
+            }
 
   # 머지 후: 실제 versionCode 업데이트
   update-version-on-merge:
