@@ -171,6 +171,36 @@ jobs:
             echo "Creating beta tag: $new_version"
             git tag -a "$new_version" -m "Beta release $new_version"
             git push origin "$new_version"
+
+            # beta 릴리즈 노트 생성
+            echo "## Beta Release Notes" > BETA_CHANGELOG.md
+            echo "" >> BETA_CHANGELOG.md
+            echo "### 버전: $new_version" >> BETA_CHANGELOG.md
+            echo "" >> BETA_CHANGELOG.md
+            
+            # PR 제목과 설명 추가
+            echo "### PR 정보" >> BETA_CHANGELOG.md
+            echo "- 제목: ${{ github.event.pull_request.title }}" >> BETA_CHANGELOG.md
+            if [ ! -z "${{ github.event.pull_request.body }}" ]; then
+              echo "- 설명:" >> BETA_CHANGELOG.md
+              echo "${{ github.event.pull_request.body }}" >> BETA_CHANGELOG.md
+            fi
+            echo "" >> BETA_CHANGELOG.md
+            
+            # 커밋 내역 추가
+            echo "### 변경 사항" >> BETA_CHANGELOG.md
+            echo "" >> BETA_CHANGELOG.md
+            
+            # PR에 포함된 커밋들의 메시지를 가져옴
+            git log --pretty=format:"- %s (%h)" ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }} >> BETA_CHANGELOG.md
+            echo "" >> BETA_CHANGELOG.md
+            
+            # beta 릴리즈 생성
+            gh release create "$new_version" \
+              --title "Beta Release $new_version" \
+              --notes-file BETA_CHANGELOG.md \
+              --prerelease \
+              app/build/outputs/apk/debug/*-debug.apk
           
             # beta 태그에서 릴리즈 버전 추출
             latest_beta=$(git tag -l "v*-beta.*" --sort=-v:refname | head -n 1)
@@ -180,6 +210,9 @@ jobs:
             git tag -a "$release_version" -m "Release version $release_version"
             git push origin "$release_version"
           fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # 빌드 작업
   build:
