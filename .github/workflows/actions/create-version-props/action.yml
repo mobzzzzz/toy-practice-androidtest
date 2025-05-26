@@ -1,28 +1,72 @@
 name: 'Create Version Properties'
-description: 'Creates version.properties file from GitHub Variables'
+description: 'Creates version.properties file from git tags'
 
-inputs:
-  version_code:
-    description: 'Version code'
-    required: true
-  version_major:
-    description: 'Major version number'
-    required: true
-  version_minor:
-    description: 'Minor version number'
-    required: true
-  version_patch:
-    description: 'Patch version number'
-    required: true
 runs:
   using: "composite"
   steps:
     - name: Create version properties
       shell: bash
       run: |
+        # 태그 존재 여부 확인
+        if ! git tag -l "v*" | grep -q .; then
+          # 태그가 없는 경우 (출시 전)
+          version_code="1"
+          version_major="0"
+          version_minor="0"
+          version_patch="0"
+          is_beta="true"
+          timestamp=$(date +%Y%m%d%H%M%S)
+        else
+          # 최신 릴리즈 태그와 베타 태그 가져오기
+          latest_release_tag=$(git tag -l "v*" | grep -v "beta" | sort -V | tail -n 1)
+          latest_beta_tag=$(git tag -l "v*-beta.*" | sort -V | tail -n 1)
+          
+          # 최신 태그 결정
+          if [[ -z "$latest_beta_tag" ]]; then
+            latest_tag="$latest_release_tag"
+          elif [[ -z "$latest_release_tag" ]]; then
+            latest_tag="$latest_beta_tag"
+          else
+            # 베타가 더 최신 버전인지 비교
+            beta_base=$(echo "$latest_beta_tag" | sed 's/-beta\.[0-9]\+//')
+            if [[ "$(echo -e "$latest_release_tag\n$beta_base" | sort -V | tail -n 1)" == "$beta_base" ]]; then
+              latest_tag="$latest_beta_tag"
+            else
+              latest_tag="$latest_release_tag"
+            fi
+          fi
+
+          # 버전 코드는 커밋 수로 대체 (최소값 1)
+          version_code=$(git rev-list --count HEAD || echo "1")
+          
+          # 베타 버전 여부와 타임스탬프 추출
+          if [[ $latest_tag =~ -beta\.[0-9]+ ]]; then
+            is_beta="true"
+            timestamp=$(echo $latest_tag | sed 's/.*-beta\.\([0-9]\+\)/\1/')
+          else
+            is_beta="false"
+            timestamp=""
+          fi
+          
+          # 버전 숫자 추출
+          version_parts=($(echo $latest_tag | sed 's/-beta\.[0-9]\+//' | sed 's/v\([0-9]*\)\.\([0-9]*\)\.\([0-9]*\).*/\1 \2 \3/'))
+          version_major="${version_parts[0]}"
+          version_minor="${version_parts[1]}"
+          version_patch="${version_parts[2]}"
+        fi
+        
+        # version.properties 생성
         cat > version.properties << EOF
-        VERSION_CODE=${{ inputs.version_code }}
-        VERSION_MAJOR=${{ inputs.version_major }}
-        VERSION_MINOR=${{ inputs.version_minor }}
-        VERSION_PATCH=${{ inputs.version_patch }}
+        VERSION_CODE=$version_code
+        VERSION_MAJOR=$version_major
+        VERSION_MINOR=$version_minor
+        VERSION_PATCH=$version_patch
+        IS_BETA=$is_beta
+        TIMESTAMP=$timestamp
         EOF
+
+        echo "Created version.properties with:"
+        echo "Version: $version_major.$version_minor.$version_patch"
+        echo "Is Beta: $is_beta"
+        [[ "$is_beta" == "true" ]] && echo "Beta Timestamp: $timestamp"
+        echo "Version Code: $version_code"

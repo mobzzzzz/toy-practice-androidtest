@@ -25,6 +25,9 @@ android {
         minSdk = 24
         targetSdk = 35
 
+        // GitHub Actions에서 이 값을 자동으로 증가시킬 예정
+        versionCode = 1
+
         val versionProps =
             Properties().apply {
                 val propsFile = rootProject.file("version.properties")
@@ -33,13 +36,19 @@ android {
                 }
             }
 
-        versionCode = (versionProps["VERSION_CODE"] as? String)?.toIntOrNull() ?: 1
         val vMajor = (versionProps["VERSION_MAJOR"] as? String)?.toIntOrNull() ?: 1
         val vMinor = (versionProps["VERSION_MINOR"] as? String)?.toIntOrNull() ?: 0
         val vPatch = (versionProps["VERSION_PATCH"] as? String)?.toIntOrNull() ?: 0
+        val isBeta = (versionProps["IS_BETA"] as? String)?.toBoolean() ?: false
 
-        // 기본 버전 이름 설정
-        versionName = "$vMajor.$vMinor.$vPatch"
+        // beta 버전일 경우 timestamp 포함
+        versionName =
+            if (isBeta) {
+                val timestamp = (versionProps["TIMESTAMP"] as? String) ?: ""
+                "$vMajor.$vMinor.$vPatch-beta.$timestamp"
+            } else {
+                "$vMajor.$vMinor.$vPatch"
+            }
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
