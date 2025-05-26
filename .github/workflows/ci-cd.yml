@@ -147,7 +147,22 @@ jobs:
       # APK 빌드를 버전 업데이트 후에 수행
       - name: Build Debug APK
         if: github.base_ref == 'dev'
-        run: ./gradlew assembleDebug
+        id: build-debug
+        run: |
+          echo "Building debug APK..."
+          ./gradlew assembleDebug
+          
+          # APK 파일 경로 확인
+          APK_PATH="app/build/outputs/apk/debug/app-debug.apk"
+          if [ -f "$APK_PATH" ]; then
+            echo "Debug APK built successfully at: $APK_PATH"
+            echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT
+          else
+            echo "Error: Debug APK not found at expected path: $APK_PATH"
+            echo "Listing contents of app/build/outputs/apk/debug/:"
+            ls -la app/build/outputs/apk/debug/
+            exit 1
+          fi
 
       - name: Version Update & Tag Creation
         if: github.event.pull_request.merged == true
@@ -224,8 +239,9 @@ jobs:
             echo "" >> BETA_CHANGELOG.md
             
             # APK 파일 존재 확인
-            if [ ! -f "app/build/outputs/apk/debug/app-debug.apk" ]; then
-              echo "Error: Debug APK not found!"
+            APK_PATH="${{ steps.build-debug.outputs.apk_path }}"
+            if [ ! -f "$APK_PATH" ]; then
+              echo "Error: Debug APK not found at: $APK_PATH"
               exit 1
             fi
             
@@ -234,7 +250,7 @@ jobs:
               --title "Beta Release $new_version" \
               --notes-file BETA_CHANGELOG.md \
               --prerelease \
-              app/build/outputs/apk/debug/app-debug.apk
+              "$APK_PATH"
           
             # beta 태그에서 릴리즈 버전 추출
             latest_beta=$(git tag -l "v*-beta.*" --sort=-v:refname | head -n 1)
