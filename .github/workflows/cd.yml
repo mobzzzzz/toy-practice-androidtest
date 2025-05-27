@@ -5,9 +5,9 @@ on:
     types: [closed]
     branches: ["dev", "main"]
 
-# 배포 작업은 순차적으로 실행
+# 배포 작업은 브랜치별로 순차적으로 실행 (여러 PR 동시 머지 시 대기열 처리)
 concurrency:
-  group: ${{ github.workflow }}-${{ github.base_ref }}
+  group: "cd-${{ github.base_ref }}"
   cancel-in-progress: false
 
 jobs:
