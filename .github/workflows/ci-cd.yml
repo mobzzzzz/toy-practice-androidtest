@@ -51,10 +51,12 @@ jobs:
   test-and-build:
     name: Test and Build
     runs-on: ubuntu-latest
-    needs: [validate]
     if: |
-      (github.event_name == 'pull_request' && !github.event.pull_request.merged) ||
-      (github.event_name == 'pull_request_target' && github.event.pull_request.merged == true)
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'pull_request_target' && 
+       github.event.pull_request.merged == true) ||
+      (github.event_name == 'push' && 
+       startsWith(github.ref, 'refs/tags/v'))
     outputs:
       build_type: ${{ github.base_ref == 'main' && 'release' || 'debug' }}
       timestamp: ${{ steps.set-timestamp.outputs.value }}
@@ -97,9 +99,6 @@ jobs:
           fi
 
       - name: Upload Build Artifact
-        if: |
-          github.event_name == 'pull_request_target' && 
-          github.event.pull_request.merged == true
         uses: actions/upload-artifact@v4
         with:
           name: build-output
@@ -110,11 +109,11 @@ jobs:
   version-management:
     name: Version Management
     runs-on: ubuntu-latest
+    needs: [test-and-build]
     if: |
       github.event_name == 'pull_request_target' && 
       github.event.pull_request.merged == true && 
       github.base_ref == 'dev'
-    needs: [test-and-build]
     permissions:
       contents: write
       actions: write
@@ -125,6 +124,7 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.merge_commit_sha }}
+          token: ${{ secrets.ADMIN_TOKEN }}
 
       - name: Update Version Code
         id: version-update
@@ -152,7 +152,6 @@ jobs:
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git config --global user.name "github-actions[bot]"
           
-          # 최신 릴리즈 태그에서 다음 버전 계산
           latest_tag=$(git tag -l "v*" | grep -v "beta" | sort -V | tail -n 1)
           if [ -z "$latest_tag" ]; then
             major=1
@@ -161,7 +160,6 @@ jobs:
           else
             version=${latest_tag#v}
             IFS='.' read -r major minor patch <<< "$version"
-            # dev 브랜치는 patch 버전 증가
             patch=$((patch + 1))
           fi
           
@@ -175,11 +173,11 @@ jobs:
   create-release:
     name: Create Release Tag
     runs-on: ubuntu-latest
+    needs: [test-and-build]
     if: |
       github.event_name == 'pull_request_target' && 
       github.event.pull_request.merged == true && 
       github.base_ref == 'main'
-    needs: [test-and-build]
     permissions:
       contents: write
     steps:
@@ -187,6 +185,7 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.merge_commit_sha }}
+          token: ${{ secrets.ADMIN_TOKEN }}
 
       - name: Create Release Tag
         id: create_tag
@@ -194,14 +193,12 @@ jobs:
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git config --global user.name "github-actions[bot]"
           
-          # beta 태그들 중 가장 최신 버전 찾기
           latest_beta=$(git tag -l "v*-beta*" | sort -V | tail -n 1)
           if [ -z "$latest_beta" ]; then
             echo "No beta tag found"
             exit 1
           fi
           
-          # beta 태그에서 버전 추출 (beta.timestamp 제거)
           version=$(echo $latest_beta | sed 's/^v\(.*\)-beta\..*/\1/')
           release_tag="v$version"
           
@@ -227,23 +224,20 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.merge_commit_sha }}
           fetch-depth: 0
+          token: ${{ secrets.ADMIN_TOKEN }}
         
-      # 빌드 결과물 다운로드
       - name: Download Build Artifact
         uses: actions/download-artifact@v4
         with:
           name: build-output
           path: .
 
-      # 릴리즈 노트 생성
       - name: Generate Release Notes
         id: release_notes
         run: |
           if [[ "${{ github.base_ref }}" == "main" ]]; then
-            # main 브랜치는 최신 릴리즈 태그 사용
             tag=$(git tag -l "v*" | grep -v "beta" | sort -V | tail -n 1)
           else
-            # dev 브랜치는 최신 beta 태그 사용
             tag=$(git tag -l "v*-beta*" | sort -V | tail -n 1)
           fi
           
@@ -259,13 +253,12 @@ jobs:
             git log --pretty=format:"- %s" ${previous_tag}..HEAD >> CHANGELOG.md
           fi
 
-      # GitHub 릴리즈 생성
       - name: Create Release
         uses: softprops/action-gh-release@v1
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.ADMIN_TOKEN }}
         with:
-          files: app/build/outputs/apk/**/*.apk
+          files: "**/*.apk"
           tag_name: ${{ github.base_ref == 'main' && needs.create-release.outputs.tag_name || github.ref_name }}
           name: ${{ github.base_ref == 'main' && needs.create-release.outputs.tag_name || github.ref_name }}
           body_path: CHANGELOG.md
