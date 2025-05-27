@@ -272,9 +272,12 @@ jobs:
 
       - name: Generate Beta Release Notes
         run: |
+          BETA_TAG="${{ needs.version-management.outputs.beta_tag }}"
+          VERSION="${BETA_TAG#v}"
+          
           echo "## 베타 릴리즈 노트" > CHANGELOG.md
           echo "" >> CHANGELOG.md
-          echo "버전: ${needs.version-management.outputs.beta_tag#v}" >> CHANGELOG.md
+          echo "버전: $VERSION" >> CHANGELOG.md
           echo "" >> CHANGELOG.md
           
           previous_tag=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
@@ -324,9 +327,12 @@ jobs:
 
       - name: Generate Release Notes
         run: |
+          RELEASE_TAG="${{ needs.create-release-tag.outputs.release_tag }}"
+          VERSION="${RELEASE_TAG#v}"
+          
           echo "## 릴리즈 노트" > CHANGELOG.md
           echo "" >> CHANGELOG.md
-          echo "버전: ${needs.create-release-tag.outputs.release_tag#v}" >> CHANGELOG.md
+          echo "버전: $VERSION" >> CHANGELOG.md
           echo "" >> CHANGELOG.md
           
           previous_tag=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
