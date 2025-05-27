@@ -327,6 +327,48 @@ jobs:
           name: ${{ needs.build-for-deploy.outputs.artifact_name }}
           path: artifacts
 
+      - name: Get Previous Beta Release Notes
+        id: get-previous-notes
+        if: needs.version-management.outputs.has_previous_beta == 'true'
+        run: |
+          previous_beta="${{ needs.version-management.outputs.previous_beta }}"
+          echo "이전 베타 릴리즈 노트 가져오는 중: $previous_beta"
+          
+          # GitHub API를 통해 이전 릴리즈 노트 가져오기
+          previous_notes=$(curl -s -H "Authorization: token ${{ secrets.ADMIN_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/tags/$previous_beta" \
+            | jq -r '.body // empty')
+          
+          if [ ! -z "$previous_notes" ] && [ "$previous_notes" != "null" ]; then
+            # 변경 사항 부분만 추출 (헤더 제외)
+            changes=$(echo "$previous_notes" | sed -n '/^- /p' | head -20)
+            echo "previous_changes<<EOF" >> $GITHUB_OUTPUT
+            echo "$changes" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Delete Previous Beta Release
+        if: needs.version-management.outputs.has_previous_beta == 'true'
+        run: |
+          previous_beta="${{ needs.version-management.outputs.previous_beta }}"
+          echo "이전 베타 릴리즈 삭제 중: $previous_beta"
+          
+          # GitHub API를 통해 이전 릴리즈 삭제
+          release_id=$(curl -s -H "Authorization: token ${{ secrets.ADMIN_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/tags/$previous_beta" \
+            | jq -r '.id // empty')
+          
+          if [ ! -z "$release_id" ] && [ "$release_id" != "null" ]; then
+            curl -X DELETE -H "Authorization: token ${{ secrets.ADMIN_TOKEN }}" \
+              "https://api.github.com/repos/${{ github.repository }}/releases/$release_id"
+            echo "이전 베타 릴리즈 삭제 완료: $release_id"
+          else
+            echo "이전 베타 릴리즈를 찾을 수 없음"
+          fi
+
       - name: Generate Beta Release Notes
         run: |
           BETA_TAG="${{ needs.version-management.outputs.beta_tag }}"
@@ -337,31 +379,19 @@ jobs:
           echo "버전: $VERSION" >> CHANGELOG.md
           echo "" >> CHANGELOG.md
           
-          # 이전 베타 릴리즈의 릴리즈 노트 가져오기
-          if [[ "${{ needs.version-management.outputs.has_previous_beta }}" == "true" ]]; then
-            previous_beta="${{ needs.version-management.outputs.previous_beta }}"
-            echo "이전 베타 릴리즈 노트 병합 중: $previous_beta"
-            
-            # GitHub API를 통해 이전 릴리즈 노트 가져오기
-            previous_notes=$(curl -s -H "Authorization: token ${{ secrets.ADMIN_TOKEN }}" \
-              "https://api.github.com/repos/${{ github.repository }}/releases/tags/$previous_beta" \
-              | jq -r '.body // empty')
-            
-            if [ ! -z "$previous_notes" ]; then
-              # 헤더 부분을 제외한 변경 사항만 추출
-              changes=$(echo "$previous_notes" | awk '/^- /')
-              if [ ! -z "$changes" ]; then
-                echo "$changes" >> CHANGELOG.md
-                echo "" >> CHANGELOG.md
-              fi
-            fi
-          fi
-          
           # 새로운 변경 사항 추가
-          echo "### 새로운 변경 사항" >> CHANGELOG.md
+          echo "### 최신 변경 사항" >> CHANGELOG.md
           echo "" >> CHANGELOG.md
           git log -1 --pretty=format:"- %s" >> CHANGELOG.md
           echo "" >> CHANGELOG.md
+          
+          # 이전 베타 릴리즈의 변경 사항 추가 (있는 경우)
+          if [[ "${{ steps.get-previous-notes.outputs.has_changes }}" == "true" ]]; then
+            echo "### 이전 변경 사항" >> CHANGELOG.md
+            echo "" >> CHANGELOG.md
+            echo "${{ steps.get-previous-notes.outputs.previous_changes }}" >> CHANGELOG.md
+            echo "" >> CHANGELOG.md
+          fi
 
       - name: Create Beta Release
         uses: softprops/action-gh-release@v1
