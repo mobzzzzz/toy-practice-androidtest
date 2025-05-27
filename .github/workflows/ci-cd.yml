@@ -99,6 +99,9 @@ jobs:
           fi
 
       - name: Upload Build Artifact
+        if: |
+          github.event_name == 'pull_request_target' && 
+          github.event.pull_request.merged == true
         uses: actions/upload-artifact@v4
         with:
           name: build-output
