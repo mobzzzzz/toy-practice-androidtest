@@ -82,66 +82,21 @@ jobs:
           name: test-results
           path: app/build/reports/tests/testDebugUnitTest/
 
-      # 버전 정보 설정
-      - name: Set Version Info
-        id: set-version
-        run: |
-          # 최신 태그에서 버전 정보 추출
-          latest_tag=$(git tag -l "v*" | grep -v "beta" | sort -V | tail -n 1)
-          if [ -z "$latest_tag" ]; then
-            major=1
-            minor=0
-            patch=0
-          else
-            version=${latest_tag#v}  # v 제거
-            IFS='.' read -r major minor patch <<< "$version"
-          fi
-          
-          if [[ "${{ github.base_ref }}" == "main" ]]; then
-            # main 브랜치는 현재 태그 버전 사용
-            version_name="$major.$minor.$patch"
-            echo "version_name=$version_name" >> $GITHUB_OUTPUT
-            echo "build_type=release" >> $GITHUB_OUTPUT
-          else
-            # dev 브랜치는 beta 태그 추가
-            timestamp=$(date +%Y%m%d%H%M%S)
-            version_name="$major.$minor.$patch-beta.$timestamp"
-            echo "version_name=$version_name" >> $GITHUB_OUTPUT
-            echo "build_type=debug" >> $GITHUB_OUTPUT
-          fi
-          
-          # version.properties 파일 생성
-          echo "VERSION_CODE=${{ vars.VERSION_CODE }}" > version.properties
-          echo "VERSION_MAJOR=$major" >> version.properties
-          echo "VERSION_MINOR=$minor" >> version.properties
-          echo "VERSION_PATCH=$patch" >> version.properties
-          if [[ "${{ github.base_ref }}" == "main" ]]; then
-            echo "IS_BETA=false" >> version.properties
-          else
-            echo "IS_BETA=true" >> version.properties
-            echo "TIMESTAMP=$timestamp" >> version.properties
-          fi
+      # 타임스탬프 생성
+      - name: Generate Timestamp
+        id: timestamp
+        run: echo "timestamp=$(date +%Y%m%d%H%M%S)" >> $GITHUB_OUTPUT
 
       # APK 빌드
       - name: Build APK
-        id: build-apk
+        env:
+          VERSION_CODE: ${{ vars.VERSION_CODE }}
+          BUILD_TIMESTAMP: ${{ steps.timestamp.outputs.timestamp }}
         run: |
-          if [[ "${{ steps.set-version.outputs.build_type }}" == "release" ]]; then
-            ./gradlew assembleRelease
-            APK_DIR="app/build/outputs/apk/release"
+          if [[ "${{ github.base_ref }}" == "main" ]]; then
+            ./gradlew assembleRelease -Prelease
           else
             ./gradlew assembleDebug
-            APK_DIR="app/build/outputs/apk/debug"
-          fi
-          
-          # APK 파일 찾기
-          APK_FILE=$(find "$APK_DIR" -name "*.apk" -type f)
-          if [ ! -z "$APK_FILE" ]; then
-            echo "APK built successfully at: $APK_FILE"
-            echo "apk_path=$APK_FILE" >> $GITHUB_OUTPUT
-          else
-            echo "Error: APK not found in $APK_DIR"
-            exit 1
           fi
 
       # 빌드 결과물 저장
@@ -154,7 +109,6 @@ jobs:
           name: build-output
           path: |
             app/build/outputs/apk/
-            version.properties
           retention-days: 1
 
   # 버전 관리 작업 (dev 브랜치 머지 시에만)
