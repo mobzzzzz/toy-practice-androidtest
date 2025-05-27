@@ -261,6 +261,37 @@ jobs:
           name: ${{ needs.build-for-deploy.outputs.artifact_name }}
           path: artifacts
 
+      - name: Get Latest Version Code
+        id: get-latest-version-code
+        uses: actions/github-script@v7
+        env:
+          GH_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+        with:
+          github-token: ${{ secrets.ADMIN_TOKEN }}
+          script: |
+            // 최신 VERSION_CODE 다시 읽기 (main 머지로 인한 변경 반영)
+            const { data: variable } = await github.rest.actions.getRepoVariable({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              name: 'VERSION_CODE'
+            });
+            
+            const latestVersionCode = variable.value;
+            const originalVersionCode = '${{ needs.version-management.outputs.version_code }}';
+            
+            console.log(`Original version code: ${originalVersionCode}`);
+            console.log(`Latest version code: ${latestVersionCode}`);
+            
+            if (originalVersionCode !== latestVersionCode) {
+              console.log(`⚠️ Version code changed during workflow execution!`);
+              console.log(`Using latest version code: ${latestVersionCode}`);
+            } else {
+              console.log(`✅ Version code unchanged: ${latestVersionCode}`);
+            }
+            
+            core.setOutput('latest_version_code', latestVersionCode);
+            core.setOutput('version_changed', originalVersionCode !== latestVersionCode);
+
       - name: Get Previous Beta Release Notes
         id: get-previous-notes
         run: |
@@ -471,12 +502,18 @@ jobs:
         run: |
           BETA_TAG="${{ needs.version-management.outputs.beta_tag }}"
           VERSION="${BETA_TAG#v}"
-          VERSION_CODE="${{ needs.version-management.outputs.version_code }}"
+          LATEST_VERSION_CODE="${{ steps.get-latest-version-code.outputs.latest_version_code }}"
+          VERSION_CHANGED="${{ steps.get-latest-version-code.outputs.version_changed }}"
           
           echo "## 베타 릴리즈 노트" > CHANGELOG.md
           echo "" >> CHANGELOG.md
           echo "**버전**: $VERSION" >> CHANGELOG.md
-          echo "**Version Code**: $VERSION_CODE" >> CHANGELOG.md
+          echo "**Version Code**: $LATEST_VERSION_CODE" >> CHANGELOG.md
+          
+          if [[ "$VERSION_CHANGED" == "true" ]]; then
+            echo "**⚠️ 참고**: 워크플로우 실행 중 Version Code가 업데이트되어 최신 값을 사용합니다." >> CHANGELOG.md
+          fi
+          
           echo "" >> CHANGELOG.md
           
           # 새로운 변경 사항 추가
