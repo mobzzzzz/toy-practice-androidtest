@@ -192,6 +192,9 @@ jobs:
           # 최신 정식 릴리즈 태그 가져오기 (beta가 아닌 태그 중 가장 최신)
           latest_release=$(git tag -l "v*" | grep -v "beta" | sort -V | tail -n 1)
           
+          # 최신 베타 태그 가져오기
+          latest_beta=$(git tag -l "v*-beta*" | sort -V | tail -n 1)
+          
           # PR 브랜치 이름에서 타입 추출
           branch_name="${{ github.head_ref }}"
           
@@ -204,16 +207,35 @@ jobs:
             version=${latest_release#v}
             IFS='.' read -r major minor patch <<< "$version"
             
-            # 브랜치 타입에 따라 다음 버전 결정
-            if [[ "$branch_name" =~ ^(major|breaking)/ ]]; then
-              major=$((major + 1))
-              minor=0
-              patch=0
-            elif [[ "$branch_name" =~ ^feat/ ]]; then
-              minor=$((minor + 1))
-              patch=0
+            # 최신 베타 버전 분석
+            if [ ! -z "$latest_beta" ]; then
+              beta_version=$(echo $latest_beta | sed 's/v\([0-9]*\.[0-9]*\.[0-9]*\).*/\1/')
+              IFS='.' read -r beta_major beta_minor beta_patch <<< "$beta_version"
+              
+              # 베타 버전이 이미 minor 버전이 올라간 상태인지 확인
+              if [ "$beta_minor" -gt "$minor" ]; then
+                # minor 버전이 이미 올라간 상태면 해당 버전 유지
+                major=$beta_major
+                minor=$beta_minor
+                patch=$beta_patch
+                echo "Using existing beta version: v$major.$minor.$patch"
+              else
+                # 브랜치 타입에 따라 버전 결정
+                if [[ "$branch_name" =~ ^feat/ ]]; then
+                  minor=$((minor + 1))
+                  patch=0
+                else
+                  patch=$((patch + 1))
+                fi
+              fi
             else
-              patch=$((patch + 1))
+              # 브랜치 타입에 따라 버전 결정
+              if [[ "$branch_name" =~ ^feat/ ]]; then
+                minor=$((minor + 1))
+                patch=0
+              else
+                patch=$((patch + 1))
+              fi
             fi
           fi
           
