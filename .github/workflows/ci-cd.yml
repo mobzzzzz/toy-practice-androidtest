@@ -260,7 +260,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          ref: ${{ needs.version-management.outputs.beta_tag }}
           fetch-depth: 0
           token: ${{ secrets.ADMIN_TOKEN }}
         
@@ -268,7 +268,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: ${{ needs.build-for-deploy.outputs.artifact_name }}
-          path: .
+          path: artifacts
 
       - name: Generate Beta Release Notes
         run: |
@@ -290,8 +290,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.ADMIN_TOKEN }}
         with:
           files: |
-            **/*.apk
-            **/output-metadata.json
+            artifacts/**/*.apk
+            artifacts/**/output-metadata.json
           tag_name: ${{ needs.version-management.outputs.beta_tag }}
           name: "Beta Release ${{ needs.version-management.outputs.beta_tag }}"
           body_path: CHANGELOG.md
@@ -312,7 +312,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          ref: ${{ needs.create-release-tag.outputs.release_tag }}
           fetch-depth: 0
           token: ${{ secrets.ADMIN_TOKEN }}
         
@@ -320,7 +320,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: ${{ needs.build-for-deploy.outputs.artifact_name }}
-          path: .
+          path: artifacts
 
       - name: Generate Release Notes
         run: |
@@ -342,8 +342,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.ADMIN_TOKEN }}
         with:
           files: |
-            **/*.apk
-            **/output-metadata.json
+            artifacts/**/*.apk
+            artifacts/**/output-metadata.json
           tag_name: ${{ needs.create-release-tag.outputs.release_tag }}
           name: "Release ${{ needs.create-release-tag.outputs.release_tag }}"
           body_path: CHANGELOG.md
