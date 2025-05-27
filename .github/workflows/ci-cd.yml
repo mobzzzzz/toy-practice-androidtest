@@ -256,9 +256,7 @@ jobs:
           if [ ! -z "$previous_beta" ]; then
             echo "has_previous_beta=true" >> $GITHUB_OUTPUT
             echo "previous_beta=$previous_beta" >> $GITHUB_OUTPUT
-            # 이전 베타 태그 삭제
-            git tag -d "$previous_beta"
-            git push origin ":refs/tags/$previous_beta"
+            echo "이전 베타 태그 발견: $previous_beta (릴리즈 작업에서 삭제 예정)"
           fi
           
           echo "Creating beta tag: $beta_tag (based on $latest_release)"
@@ -450,6 +448,12 @@ jobs:
               
               if [ "$delete_http_code" = "204" ]; then
                 echo "이전 베타 릴리즈 삭제 완료: $release_id"
+                
+                # 릴리즈 삭제 성공 후 태그도 삭제
+                echo "이전 베타 태그 삭제 중: $previous_beta"
+                git tag -d "$previous_beta" 2>/dev/null || echo "로컬 태그가 없거나 이미 삭제됨"
+                git push origin ":refs/tags/$previous_beta" 2>/dev/null || echo "원격 태그가 없거나 이미 삭제됨"
+                echo "이전 베타 태그 삭제 완료: $previous_beta"
               else
                 echo "릴리즈 삭제 실패: HTTP $delete_http_code"
                 echo "응답: $delete_body"
@@ -497,6 +501,12 @@ jobs:
                   
                   if [ "$draft_http_code" = "200" ]; then
                     echo "릴리즈를 Draft 상태로 변경 완료"
+                    
+                    # Draft 처리 성공 후 태그도 삭제
+                    echo "이전 베타 태그 삭제 중: $previous_beta"
+                    git tag -d "$previous_beta" 2>/dev/null || echo "로컬 태그가 없거나 이미 삭제됨"
+                    git push origin ":refs/tags/$previous_beta" 2>/dev/null || echo "원격 태그가 없거나 이미 삭제됨"
+                    echo "이전 베타 태그 삭제 완료: $previous_beta"
                   elif [[ "$draft_http_code" =~ ^5[0-9][0-9]$ ]]; then
                     echo "Draft 변경도 서버 오류로 실패: HTTP $draft_http_code"
                     echo ""
@@ -510,8 +520,14 @@ jobs:
                 fi
               fi
             else
-              echo "유효한 릴리즈 ID가 없음 - 삭제할 수 없음"
+              echo "유효한 릴리즈 ID가 없음 - 릴리즈는 삭제할 수 없음"
               echo "이전 스텝에서 릴리즈를 찾지 못했거나 이미 삭제됨"
+              
+              # 릴리즈는 없지만 태그는 있을 수 있으므로 태그만 삭제 시도
+              echo "이전 베타 태그만 삭제 시도: $previous_beta"
+              git tag -d "$previous_beta" 2>/dev/null || echo "로컬 태그가 없거나 이미 삭제됨"
+              git push origin ":refs/tags/$previous_beta" 2>/dev/null || echo "원격 태그가 없거나 이미 삭제됨"
+              echo "이전 베타 태그 삭제 시도 완료: $previous_beta"
             fi
           else
             echo "삭제할 이전 베타 릴리즈가 없음"
