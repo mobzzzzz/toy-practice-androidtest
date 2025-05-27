@@ -84,6 +84,7 @@ android {
         val releaseProps = loadConfigProperties("release")
 
         debug {
+            applicationIdSuffix = ".debug"
             debugProps.forEach { (key, value) ->
                 buildConfigField("String", key.toString(), "\"$value\"")
             }
