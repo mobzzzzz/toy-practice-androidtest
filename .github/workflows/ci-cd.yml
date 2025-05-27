@@ -107,6 +107,8 @@ jobs:
 
       - name: Set Timestamp
         id: set-timestamp
+        env:
+          TZ: 'Asia/Seoul'
         run: echo "value=$(date +%Y%m%d%H%M%S)" >> $GITHUB_OUTPUT
 
       - name: Set Artifact Name
