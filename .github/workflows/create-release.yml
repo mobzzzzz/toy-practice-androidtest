@@ -1,0 +1,249 @@
+name: Create Release
+
+on:
+  workflow_call:
+    inputs:
+      release_type:
+        description: 'Release type (beta or release)'
+        required: true
+        type: string
+      tag_name:
+        description: 'Tag name for the release'
+        required: true
+        type: string
+      artifact_name:
+        description: 'Name of the artifact to download'
+        required: true
+        type: string
+      version_code:
+        description: 'Version code for the release'
+        required: true
+        type: string
+      previous_beta_tag:
+        description: 'Previous beta tag (for beta releases only)'
+        required: false
+        type: string
+        default: ''
+      has_previous_beta:
+        description: 'Whether there is a previous beta release'
+        required: false
+        type: string
+        default: 'false'
+    secrets:
+      ADMIN_TOKEN:
+        required: true
+
+jobs:
+  create-release:
+    name: Create ${{ inputs.release_type == 'beta' && 'Beta' || 'Production' }} Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag_name }}
+          fetch-depth: 0
+          token: ${{ secrets.ADMIN_TOKEN }}
+        
+      - name: Download Build Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: artifacts
+
+      - name: Get Latest Version Code (Beta Only)
+        if: inputs.release_type == 'beta'
+        id: get-latest-version-code
+        uses: actions/github-script@v7
+        env:
+          GH_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+        with:
+          github-token: ${{ secrets.ADMIN_TOKEN }}
+          script: |
+            // 최신 VERSION_CODE 다시 읽기 (main 머지로 인한 변경 반영)
+            const { data: variable } = await github.rest.actions.getRepoVariable({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              name: 'VERSION_CODE'
+            });
+            
+            const latestVersionCode = variable.value;
+            const originalVersionCode = '${{ inputs.version_code }}';
+            
+            console.log(`Original version code: ${originalVersionCode}`);
+            console.log(`Latest version code: ${latestVersionCode}`);
+            
+            if (originalVersionCode !== latestVersionCode) {
+              console.log(`⚠️ Version code changed during workflow execution!`);
+              console.log(`Using latest version code: ${latestVersionCode}`);
+            } else {
+              console.log(`✅ Version code unchanged: ${latestVersionCode}`);
+            }
+            
+            core.setOutput('latest_version_code', latestVersionCode);
+            core.setOutput('version_changed', originalVersionCode !== latestVersionCode);
+
+      - name: Get Previous Beta Release Notes (Beta Only)
+        if: inputs.release_type == 'beta' && inputs.has_previous_beta == 'true'
+        id: get-previous-notes
+        run: |
+          previous_beta="${{ inputs.previous_beta_tag }}"
+          
+          echo "이전 베타 릴리즈 노트 가져오는 중: $previous_beta"
+          
+          # GitHub API를 통해 이전 릴리즈 정보 가져오기
+          api_response=$(curl -s -w "HTTPSTATUS:%{http_code}" \
+            -H "Authorization: token ${{ secrets.ADMIN_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/tags/$previous_beta")
+          
+          http_code=$(echo "$api_response" | tr -d '\n' | sed -e 's/.*HTTPSTATUS://')
+          response_body=$(echo "$api_response" | sed -e 's/HTTPSTATUS:.*//g')
+          
+          echo "API HTTP 상태 코드: $http_code"
+          
+          if [ "$http_code" = "200" ]; then
+            previous_notes=$(echo "$response_body" | jq -r '.body // empty')
+            release_id=$(echo "$response_body" | jq -r '.id // empty')
+            
+            echo "릴리즈 ID: $release_id"
+            echo "릴리즈 노트 길이: ${#previous_notes}"
+            
+            # 릴리즈 ID를 저장 (삭제용)
+            echo "release_id=$release_id" >> $GITHUB_OUTPUT
+            
+            if [ ! -z "$previous_notes" ] && [ "$previous_notes" != "null" ] && [ "$previous_notes" != "empty" ]; then
+              # 변경 사항 부분만 추출 (헤더 제외)
+              changes=$(echo "$previous_notes" | sed -n '/^- /p' | head -20)
+              if [ ! -z "$changes" ]; then
+                echo "previous_changes<<EOF" >> $GITHUB_OUTPUT
+                echo "$changes" >> $GITHUB_OUTPUT
+                echo "EOF" >> $GITHUB_OUTPUT
+                echo "has_changes=true" >> $GITHUB_OUTPUT
+                echo "이전 릴리즈 노트 가져오기 완료 (${#changes} 문자)"
+              else
+                echo "has_changes=false" >> $GITHUB_OUTPUT
+                echo "이전 릴리즈 노트에 변경사항이 없음"
+              fi
+            else
+              echo "has_changes=false" >> $GITHUB_OUTPUT
+              echo "이전 릴리즈 노트가 비어있음"
+            fi
+          else
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "release_id=" >> $GITHUB_OUTPUT
+            echo "이전 베타 릴리즈를 찾을 수 없음 또는 API 오류: HTTP $http_code"
+          fi
+
+      - name: Delete Previous Beta Release (Beta Only)
+        if: inputs.release_type == 'beta' && inputs.has_previous_beta == 'true'
+        run: |
+          previous_beta="${{ inputs.previous_beta_tag }}"
+          release_id="${{ steps.get-previous-notes.outputs.release_id }}"
+          
+          echo "이전 베타 릴리즈 삭제 중: $previous_beta"
+          echo "사용할 릴리즈 ID: $release_id"
+          
+          # 이전 스텝에서 가져온 릴리즈 ID 사용
+          if [ ! -z "$release_id" ] && [ "$release_id" != "null" ] && [ "$release_id" != "empty" ]; then
+            echo "릴리즈 ID $release_id 삭제 시도 중..."
+            
+            delete_response=$(curl -s -w "HTTPSTATUS:%{http_code}" \
+              -X DELETE \
+              -H "Authorization: token ${{ secrets.ADMIN_TOKEN }}" \
+              "https://api.github.com/repos/${{ github.repository }}/releases/$release_id")
+            
+            delete_http_code=$(echo "$delete_response" | tr -d '\n' | sed -e 's/.*HTTPSTATUS://')
+            
+            echo "삭제 API HTTP 상태 코드: $delete_http_code"
+            
+            if [ "$delete_http_code" = "204" ]; then
+              echo "이전 베타 릴리즈 삭제 완료: $release_id"
+              
+              # 릴리즈 삭제 성공 후 태그도 삭제
+              echo "이전 베타 태그 삭제 중: $previous_beta"
+              git tag -d "$previous_beta" 2>/dev/null || echo "로컬 태그가 없거나 이미 삭제됨"
+              git push origin ":refs/tags/$previous_beta" 2>/dev/null || echo "원격 태그가 없거나 이미 삭제됨"
+              echo "이전 베타 태그 삭제 완료: $previous_beta"
+            else
+              echo "릴리즈 삭제 실패: HTTP $delete_http_code"
+              # 대안: 릴리즈를 Draft로 변경
+              echo "대안으로 릴리즈를 Draft 상태로 변경 시도..."
+              curl -s -X PATCH \
+                -H "Authorization: token ${{ secrets.ADMIN_TOKEN }}" \
+                -H "Content-Type: application/json" \
+                -d '{"draft": true}' \
+                "https://api.github.com/repos/${{ github.repository }}/releases/$release_id"
+            fi
+          else
+            echo "유효한 릴리즈 ID가 없음 - 태그만 삭제 시도"
+            git tag -d "$previous_beta" 2>/dev/null || echo "로컬 태그가 없거나 이미 삭제됨"
+            git push origin ":refs/tags/$previous_beta" 2>/dev/null || echo "원격 태그가 없거나 이미 삭제됨"
+          fi
+
+      - name: Generate Beta Release Notes
+        if: inputs.release_type == 'beta'
+        run: |
+          TAG_NAME="${{ inputs.tag_name }}"
+          VERSION="${TAG_NAME#v}"
+          LATEST_VERSION_CODE="${{ steps.get-latest-version-code.outputs.latest_version_code || inputs.version_code }}"
+          VERSION_CHANGED="${{ steps.get-latest-version-code.outputs.version_changed }}"
+          
+          echo "## 베타 릴리즈 노트" > CHANGELOG.md
+          echo "" >> CHANGELOG.md
+          echo "**버전**: $VERSION" >> CHANGELOG.md
+          echo "**Version Code**: $LATEST_VERSION_CODE" >> CHANGELOG.md
+          
+          if [[ "$VERSION_CHANGED" == "true" ]]; then
+            echo "**⚠️ 참고**: 워크플로우 실행 중 Version Code가 업데이트되어 최신 값을 사용합니다." >> CHANGELOG.md
+          fi
+          
+          echo "" >> CHANGELOG.md
+          
+          # 새로운 변경 사항 추가
+          echo "### 최신 변경 사항" >> CHANGELOG.md
+          echo "" >> CHANGELOG.md
+          git log -1 --pretty=format:"- %s" >> CHANGELOG.md
+          echo "" >> CHANGELOG.md
+          
+          # 이전 베타 릴리즈의 변경 사항 추가 (있는 경우)
+          if [[ "${{ steps.get-previous-notes.outputs.has_changes }}" == "true" ]]; then
+            echo "### 이전 변경 사항" >> CHANGELOG.md
+            echo "" >> CHANGELOG.md
+            echo "${{ steps.get-previous-notes.outputs.previous_changes }}" >> CHANGELOG.md
+            echo "" >> CHANGELOG.md
+          fi
+
+      - name: Generate Production Release Notes
+        if: inputs.release_type == 'release'
+        run: |
+          TAG_NAME="${{ inputs.tag_name }}"
+          VERSION="${TAG_NAME#v}"
+          VERSION_CODE="${{ inputs.version_code }}"
+          
+          echo "## 릴리즈 노트" > CHANGELOG.md
+          echo "" >> CHANGELOG.md
+          echo "**버전**: $VERSION" >> CHANGELOG.md
+          echo "**Version Code**: $VERSION_CODE" >> CHANGELOG.md
+          echo "" >> CHANGELOG.md
+          
+          previous_tag=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          if [ -z "$previous_tag" ]; then
+            git log --pretty=format:"- %s" >> CHANGELOG.md
+          else
+            git log --pretty=format:"- %s" ${previous_tag}..HEAD >> CHANGELOG.md
+          fi
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+        with:
+          files: |
+            artifacts/**/*.apk
+            artifacts/**/output-metadata.json
+          tag_name: ${{ inputs.tag_name }}
+          name: "${{ inputs.release_type == 'beta' && 'Beta Release' || 'Release' }} ${{ inputs.tag_name }}"
+          body_path: CHANGELOG.md
+          draft: false
+          prerelease: ${{ inputs.release_type == 'beta' }} 

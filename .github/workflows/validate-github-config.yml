@@ -1,0 +1,90 @@
+name: Validate GitHub Configuration
+
+on:
+  workflow_call:
+
+jobs:
+  validate-github-config:
+    name: Validate GitHub Configuration
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check VERSION_CODE Variable
+        run: |
+          if [ -z "${{ vars.VERSION_CODE }}" ]; then
+            echo "❌ ERROR: VERSION_CODE 변수가 설정되지 않았습니다!"
+            echo ""
+            echo "🔧 해결 방법:"
+            echo "1. GitHub Repository → Settings → Secrets and variables → Actions"
+            echo "2. Variables 탭 클릭"
+            echo "3. 'New repository variable' 클릭"
+            echo "4. Name: VERSION_CODE, Value: 1 입력"
+            echo "5. 'Add variable' 클릭"
+            echo ""
+            echo "📚 자세한 가이드: docs/GITHUB_SETUP_GUIDE.md"
+            exit 1
+          else
+            echo "✅ VERSION_CODE 변수 확인됨: ${{ vars.VERSION_CODE }}"
+          fi
+
+      - name: Check ADMIN_TOKEN Secret
+        run: |
+          if [ -z "${{ secrets.ADMIN_TOKEN }}" ]; then
+            echo "❌ ERROR: ADMIN_TOKEN 시크릿이 설정되지 않았습니다!"
+            echo ""
+            echo "🔧 해결 방법:"
+            echo "1. GitHub → Settings → Developer settings → Personal access tokens"
+            echo "2. 'Generate new token (classic)' 클릭"
+            echo "3. 다음 권한 선택:"
+            echo "   - ✅ repo (Full control of private repositories)"
+            echo "   - ✅ workflow (Update GitHub Action workflows)"
+            echo "   - ✅ write:packages (Upload packages)"
+            echo "4. Repository → Settings → Secrets and variables → Actions → Secrets"
+            echo "5. 'New repository secret' 클릭"
+            echo "6. Name: ADMIN_TOKEN, Secret: 생성한 토큰 입력"
+            echo ""
+            echo "📚 자세한 가이드: docs/GITHUB_SETUP_GUIDE.md"
+            exit 1
+          else
+            echo "✅ ADMIN_TOKEN 시크릿 확인됨"
+          fi
+
+      - name: Test ADMIN_TOKEN Permissions
+        run: |
+          echo "🔍 ADMIN_TOKEN 권한 테스트 중..."
+          
+          # GitHub API로 권한 테스트
+          response=$(curl -s -w "HTTPSTATUS:%{http_code}" \
+            -H "Authorization: token ${{ secrets.ADMIN_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/${{ github.repository }}")
+          
+          http_code=$(echo "$response" | tr -d '\n' | sed -e 's/.*HTTPSTATUS://')
+          
+          if [ "$http_code" = "200" ]; then
+            echo "✅ ADMIN_TOKEN 권한 확인됨"
+          elif [ "$http_code" = "401" ]; then
+            echo "❌ ERROR: ADMIN_TOKEN이 유효하지 않습니다!"
+            echo ""
+            echo "🔧 해결 방법:"
+            echo "1. Personal Access Token이 만료되었는지 확인"
+            echo "2. 새로운 토큰 생성 후 ADMIN_TOKEN 시크릿 업데이트"
+            echo ""
+            echo "📚 자세한 가이드: docs/GITHUB_SETUP_GUIDE.md"
+            exit 1
+          elif [ "$http_code" = "403" ]; then
+            echo "❌ ERROR: ADMIN_TOKEN 권한이 부족합니다!"
+            echo ""
+            echo "🔧 해결 방법:"
+            echo "1. Personal Access Token에 다음 권한 추가:"
+            echo "   - ✅ repo (Full control of private repositories)"
+            echo "   - ✅ workflow (Update GitHub Action workflows)"
+            echo "   - ✅ write:packages (Upload packages)"
+            echo "2. 새로운 토큰으로 ADMIN_TOKEN 시크릿 업데이트"
+            echo ""
+            echo "📚 자세한 가이드: docs/GITHUB_SETUP_GUIDE.md"
+            exit 1
+          else
+            echo "⚠️ WARNING: GitHub API 응답 코드: $http_code"
+            echo "네트워크 문제이거나 GitHub 서비스 장애일 수 있습니다."
+            echo "GitHub Status 확인: https://www.githubstatus.com/"
+          fi 
