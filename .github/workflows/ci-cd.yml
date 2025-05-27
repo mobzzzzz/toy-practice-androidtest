@@ -124,6 +124,7 @@ jobs:
         env:
           VERSION_CODE: ${{ vars.VERSION_CODE }}
           BUILD_TIMESTAMP: ${{ steps.set-timestamp.outputs.value }}
+          BETA_VERSION: ${{ needs.version-management.outputs.version }}
         run: |
           if [[ "${{ github.base_ref }}" == "main" ]]; then
             ./gradlew assembleRelease -Prelease
