@@ -104,21 +104,18 @@ jobs:
           if [[ "${{ steps.set-version.outputs.build_type }}" == "release" ]]; then
             ./gradlew assembleRelease
             APK_DIR="app/build/outputs/apk/release"
-            APK_PATTERN="app-release-unsigned.apk"
-            TARGET_APK="toy-practice-androidtest-${{ steps.set-version.outputs.version_name }}-release.apk"
           else
             ./gradlew assembleDebug
             APK_DIR="app/build/outputs/apk/debug"
-            APK_PATTERN="app-debug.apk"
-            TARGET_APK="toy-practice-androidtest-${{ steps.set-version.outputs.version_name }}-debug.apk"
           fi
           
-          # APK 파일 이름 변경
-          if [ -f "$APK_DIR/$APK_PATTERN" ]; then
-            mv "$APK_DIR/$APK_PATTERN" "$APK_DIR/$TARGET_APK"
-            echo "apk_path=$APK_DIR/$TARGET_APK" >> $GITHUB_OUTPUT
+          # APK 파일 찾기
+          APK_FILE=$(find "$APK_DIR" -name "*.apk" -type f)
+          if [ ! -z "$APK_FILE" ]; then
+            echo "APK built successfully at: $APK_FILE"
+            echo "apk_path=$APK_FILE" >> $GITHUB_OUTPUT
           else
-            echo "Error: APK not found at $APK_DIR/$APK_PATTERN"
+            echo "Error: APK not found in $APK_DIR"
             exit 1
           fi
 
