@@ -56,9 +56,8 @@ jobs:
       (github.event_name == 'pull_request' && !github.event.pull_request.merged) ||
       (github.event_name == 'pull_request_target' && github.event.pull_request.merged == true)
     outputs:
-      apk_path: ${{ steps.build-apk.outputs.apk_path }}
-      build_type: ${{ steps.set-build-type.outputs.build_type }}
-      version_name: ${{ steps.set-version.outputs.version_name }}
+      build_type: ${{ github.base_ref == 'main' && 'release' || 'debug' }}
+      timestamp: ${{ steps.set-timestamp.outputs.value }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -82,16 +81,14 @@ jobs:
           name: test-results
           path: app/build/reports/tests/testDebugUnitTest/
 
-      # 타임스탬프 생성
-      - name: Generate Timestamp
-        id: timestamp
-        run: echo "timestamp=$(date +%Y%m%d%H%M%S)" >> $GITHUB_OUTPUT
+      - name: Set Timestamp
+        id: set-timestamp
+        run: echo "value=$(date +%Y%m%d%H%M%S)" >> $GITHUB_OUTPUT
 
-      # APK 빌드
       - name: Build APK
         env:
           VERSION_CODE: ${{ vars.VERSION_CODE }}
-          BUILD_TIMESTAMP: ${{ steps.timestamp.outputs.timestamp }}
+          BUILD_TIMESTAMP: ${{ steps.set-timestamp.outputs.value }}
         run: |
           if [[ "${{ github.base_ref }}" == "main" ]]; then
             ./gradlew assembleRelease -Prelease
@@ -99,7 +96,6 @@ jobs:
             ./gradlew assembleDebug
           fi
 
-      # 빌드 결과물 저장
       - name: Upload Build Artifact
         if: |
           github.event_name == 'pull_request_target' && 
@@ -107,8 +103,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: build-output
-          path: |
-            app/build/outputs/apk/
+          path: app/build/outputs/apk/
           retention-days: 1
 
   # 버전 관리 작업 (dev 브랜치 머지 시에만)
@@ -124,7 +119,7 @@ jobs:
       contents: write
       actions: write
     outputs:
-      version_code: ${{ steps.version-update.outputs.new_version }}
+      version_code: ${{ vars.VERSION_CODE }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -157,10 +152,24 @@ jobs:
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git config --global user.name "github-actions[bot]"
           
-          version="${{ needs.test-and-build.outputs.version_name }}"
-          echo "Creating beta tag: $version"
-          git tag -a "v$version" -m "Beta release v$version"
-          git push origin "v$version"
+          # 최신 릴리즈 태그에서 다음 버전 계산
+          latest_tag=$(git tag -l "v*" | grep -v "beta" | sort -V | tail -n 1)
+          if [ -z "$latest_tag" ]; then
+            major=1
+            minor=0
+            patch=0
+          else
+            version=${latest_tag#v}
+            IFS='.' read -r major minor patch <<< "$version"
+            # dev 브랜치는 patch 버전 증가
+            patch=$((patch + 1))
+          fi
+          
+          next_version="$major.$minor.$patch"
+          beta_tag="v$next_version-beta.${{ needs.test-and-build.outputs.timestamp }}"
+          echo "Creating beta tag: $beta_tag"
+          git tag -a "$beta_tag" -m "Beta release $beta_tag"
+          git push origin "$beta_tag"
 
   # main 브랜치 머지 시 릴리즈 태그 생성
   create-release:
@@ -180,14 +189,26 @@ jobs:
           ref: ${{ github.event.pull_request.merge_commit_sha }}
 
       - name: Create Release Tag
+        id: create_tag
         run: |
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git config --global user.name "github-actions[bot]"
           
-          version="${{ needs.test-and-build.outputs.version_name }}"
-          echo "Creating release tag: $version"
-          git tag -a "v$version" -m "Release v$version"
-          git push origin "v$version"
+          # beta 태그들 중 가장 최신 버전 찾기
+          latest_beta=$(git tag -l "v*-beta*" | sort -V | tail -n 1)
+          if [ -z "$latest_beta" ]; then
+            echo "No beta tag found"
+            exit 1
+          fi
+          
+          # beta 태그에서 버전 추출 (beta.timestamp 제거)
+          version=$(echo $latest_beta | sed 's/^v\(.*\)-beta\..*/\1/')
+          release_tag="v$version"
+          
+          echo "Creating release tag: $release_tag"
+          git tag -a "$release_tag" -m "Release $release_tag"
+          git push origin "$release_tag"
+          echo "tag_name=$release_tag" >> $GITHUB_OUTPUT
 
   # 배포 작업
   deploy:
@@ -218,14 +239,20 @@ jobs:
       - name: Generate Release Notes
         id: release_notes
         run: |
-          version="${{ needs.test-and-build.outputs.version_name }}"
-          previous_tag=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          if [[ "${{ github.base_ref }}" == "main" ]]; then
+            # main 브랜치는 최신 릴리즈 태그 사용
+            tag=$(git tag -l "v*" | grep -v "beta" | sort -V | tail -n 1)
+          else
+            # dev 브랜치는 최신 beta 태그 사용
+            tag=$(git tag -l "v*-beta*" | sort -V | tail -n 1)
+          fi
           
           echo "## 변경 사항" > CHANGELOG.md
           echo "" >> CHANGELOG.md
-          echo "버전: $version" >> CHANGELOG.md
+          echo "버전: ${tag#v}" >> CHANGELOG.md
           echo "" >> CHANGELOG.md
           
+          previous_tag=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
           if [ -z "$previous_tag" ]; then
             git log --pretty=format:"- %s" >> CHANGELOG.md
           else
@@ -235,13 +262,12 @@ jobs:
       # GitHub 릴리즈 생성
       - name: Create Release
         uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          files: |
-            app/build/outputs/apk/**/*.apk
-          tag_name: "v${{ needs.test-and-build.outputs.version_name }}"
-          name: "v${{ needs.test-and-build.outputs.version_name }}"
+          files: app/build/outputs/apk/**/*.apk
+          tag_name: ${{ github.base_ref == 'main' && needs.create-release.outputs.tag_name || github.ref_name }}
+          name: ${{ github.base_ref == 'main' && needs.create-release.outputs.tag_name || github.ref_name }}
           body_path: CHANGELOG.md
           draft: false
-          prerelease: ${{ github.base_ref != 'main' }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
+          prerelease: ${{ github.base_ref != 'main' }} 
