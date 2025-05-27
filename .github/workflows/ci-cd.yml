@@ -387,6 +387,36 @@ jobs:
               echo "release_id=" >> $GITHUB_OUTPUT
               echo "API 호출 실패: HTTP $http_code"
               echo "응답: $response_body"
+              
+              # API 오류 시 수동 처리 가이드 제공
+              if [[ "$http_code" =~ ^5[0-9][0-9]$ ]]; then
+                echo ""
+                echo "🚨 GitHub API 서버 오류 (HTTP $http_code) 감지!"
+                echo "Re-run job을 해도 동일한 오류가 발생할 가능성이 높습니다."
+                echo ""
+                echo "📋 수동 처리 방법:"
+                echo "1. GitHub 릴리즈 페이지에서 이전 베타 릴리즈 확인:"
+                echo "   https://github.com/${{ github.repository }}/releases"
+                echo ""
+                echo "2. 이전 베타 릴리즈가 있다면 수동으로 삭제하거나 Draft 처리"
+                echo ""
+                echo "3. 또는 Git 명령어로 이전 베타 태그 삭제:"
+                echo "   git tag -d $previous_beta"
+                echo "   git push origin :refs/tags/$previous_beta"
+                echo ""
+                echo "4. 워크플로우 재실행 또는 새로운 PR 생성"
+                echo ""
+              elif [ "$http_code" = "403" ]; then
+                echo ""
+                echo "🔒 GitHub API 권한 오류 (HTTP 403)"
+                echo "토큰 권한을 확인하거나 잠시 후 재시도하세요."
+                echo ""
+              elif [ "$http_code" = "429" ]; then
+                echo ""
+                echo "⏰ GitHub API 요청 제한 (HTTP 429)"
+                echo "잠시 후 Re-run job을 시도하세요."
+                echo ""
+              fi
             fi
           else
             echo "has_changes=false" >> $GITHUB_OUTPUT
@@ -424,21 +454,59 @@ jobs:
                 echo "릴리즈 삭제 실패: HTTP $delete_http_code"
                 echo "응답: $delete_body"
                 
-                # 대안: 릴리즈를 Draft로 변경
-                echo "대안으로 릴리즈를 Draft 상태로 변경 시도..."
-                draft_response=$(curl -s -w "HTTPSTATUS:%{http_code}" \
-                  -X PATCH \
-                  -H "Authorization: token ${{ secrets.ADMIN_TOKEN }}" \
-                  -H "Content-Type: application/json" \
-                  -d '{"draft": true}' \
-                  "https://api.github.com/repos/${{ github.repository }}/releases/$release_id")
-                
-                draft_http_code=$(echo "$draft_response" | tr -d '\n' | sed -e 's/.*HTTPSTATUS://')
-                
-                if [ "$draft_http_code" = "200" ]; then
-                  echo "릴리즈를 Draft 상태로 변경 완료"
+                # 서버 오류 시 수동 처리 가이드 제공
+                if [[ "$delete_http_code" =~ ^5[0-9][0-9]$ ]]; then
+                  echo ""
+                  echo "🚨 GitHub API 서버 오류 (HTTP $delete_http_code) 감지!"
+                  echo "Re-run job을 해도 동일한 오류가 발생할 가능성이 높습니다."
+                  echo ""
+                  echo "📋 수동 처리 방법:"
+                  echo "1. GitHub 릴리즈 페이지에서 직접 삭제:"
+                  echo "   https://github.com/${{ github.repository }}/releases/tag/$previous_beta"
+                  echo ""
+                  echo "2. 또는 Git 명령어로 태그 삭제:"
+                  echo "   git tag -d $previous_beta"
+                  echo "   git push origin :refs/tags/$previous_beta"
+                  echo ""
+                  echo "3. 급한 경우 릴리즈를 Draft 상태로 수동 변경"
+                  echo ""
+                  echo "⚠️  서버 오류가 해결될 때까지 기다리는 것을 권장합니다."
+                  echo ""
+                elif [ "$delete_http_code" = "403" ]; then
+                  echo ""
+                  echo "🔒 GitHub API 권한 오류 (HTTP 403)"
+                  echo "토큰 권한을 확인하거나 수동으로 릴리즈를 삭제하세요:"
+                  echo "   https://github.com/${{ github.repository }}/releases/tag/$previous_beta"
+                  echo ""
+                elif [ "$delete_http_code" = "429" ]; then
+                  echo ""
+                  echo "⏰ GitHub API 요청 제한 (HTTP 429)"
+                  echo "잠시 후 Re-run job을 시도하거나 수동으로 처리하세요."
+                  echo ""
                 else
-                  echo "Draft 변경도 실패: HTTP $draft_http_code"
+                  # 대안: 릴리즈를 Draft로 변경
+                  echo "대안으로 릴리즈를 Draft 상태로 변경 시도..."
+                  draft_response=$(curl -s -w "HTTPSTATUS:%{http_code}" \
+                    -X PATCH \
+                    -H "Authorization: token ${{ secrets.ADMIN_TOKEN }}" \
+                    -H "Content-Type: application/json" \
+                    -d '{"draft": true}' \
+                    "https://api.github.com/repos/${{ github.repository }}/releases/$release_id")
+                  
+                  draft_http_code=$(echo "$draft_response" | tr -d '\n' | sed -e 's/.*HTTPSTATUS://')
+                  
+                  if [ "$draft_http_code" = "200" ]; then
+                    echo "릴리즈를 Draft 상태로 변경 완료"
+                  elif [[ "$draft_http_code" =~ ^5[0-9][0-9]$ ]]; then
+                    echo "Draft 변경도 서버 오류로 실패: HTTP $draft_http_code"
+                    echo ""
+                    echo "🚨 GitHub API 서버에 문제가 있는 것 같습니다."
+                    echo "📋 수동으로 GitHub 웹사이트에서 릴리즈를 Draft 처리하세요:"
+                    echo "   https://github.com/${{ github.repository }}/releases/tag/$previous_beta"
+                    echo ""
+                  else
+                    echo "Draft 변경도 실패: HTTP $draft_http_code"
+                  fi
                 fi
               fi
             else
