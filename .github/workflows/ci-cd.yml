@@ -341,25 +341,56 @@ jobs:
           if [[ "$has_previous" == "true" ]] && [[ ! -z "$previous_beta" ]]; then
             echo "이전 베타 릴리즈 노트 가져오는 중: $previous_beta"
             
-            # GitHub API를 통해 이전 릴리즈 노트 가져오기
-            previous_notes=$(curl -s -H "Authorization: token ${{ secrets.ADMIN_TOKEN }}" \
-              "https://api.github.com/repos/${{ github.repository }}/releases/tags/$previous_beta" \
-              | jq -r '.body // empty')
+            # GitHub API를 통해 이전 릴리즈 정보 가져오기
+            api_response=$(curl -s -w "HTTPSTATUS:%{http_code}" \
+              -H "Authorization: token ${{ secrets.ADMIN_TOKEN }}" \
+              "https://api.github.com/repos/${{ github.repository }}/releases/tags/$previous_beta")
             
-            if [ ! -z "$previous_notes" ] && [ "$previous_notes" != "null" ]; then
-              # 변경 사항 부분만 추출 (헤더 제외)
-              changes=$(echo "$previous_notes" | sed -n '/^- /p' | head -20)
-              echo "previous_changes<<EOF" >> $GITHUB_OUTPUT
-              echo "$changes" >> $GITHUB_OUTPUT
-              echo "EOF" >> $GITHUB_OUTPUT
-              echo "has_changes=true" >> $GITHUB_OUTPUT
-              echo "이전 릴리즈 노트 가져오기 완료"
+            http_code=$(echo "$api_response" | tr -d '\n' | sed -e 's/.*HTTPSTATUS://')
+            response_body=$(echo "$api_response" | sed -e 's/HTTPSTATUS:.*//g')
+            
+            echo "API HTTP 상태 코드: $http_code"
+            
+            if [ "$http_code" = "200" ]; then
+              previous_notes=$(echo "$response_body" | jq -r '.body // empty')
+              release_id=$(echo "$response_body" | jq -r '.id // empty')
+              
+              echo "릴리즈 ID: $release_id"
+              echo "릴리즈 노트 길이: ${#previous_notes}"
+              
+              # 릴리즈 ID를 저장 (삭제용)
+              echo "release_id=$release_id" >> $GITHUB_OUTPUT
+              
+              if [ ! -z "$previous_notes" ] && [ "$previous_notes" != "null" ] && [ "$previous_notes" != "empty" ]; then
+                # 변경 사항 부분만 추출 (헤더 제외)
+                changes=$(echo "$previous_notes" | sed -n '/^- /p' | head -20)
+                if [ ! -z "$changes" ]; then
+                  echo "previous_changes<<EOF" >> $GITHUB_OUTPUT
+                  echo "$changes" >> $GITHUB_OUTPUT
+                  echo "EOF" >> $GITHUB_OUTPUT
+                  echo "has_changes=true" >> $GITHUB_OUTPUT
+                  echo "이전 릴리즈 노트 가져오기 완료 (${#changes} 문자)"
+                else
+                  echo "has_changes=false" >> $GITHUB_OUTPUT
+                  echo "이전 릴리즈 노트에 변경사항이 없음"
+                fi
+              else
+                echo "has_changes=false" >> $GITHUB_OUTPUT
+                echo "이전 릴리즈 노트가 비어있음"
+              fi
+            elif [ "$http_code" = "404" ]; then
+              echo "has_changes=false" >> $GITHUB_OUTPUT
+              echo "release_id=" >> $GITHUB_OUTPUT
+              echo "이전 베타 릴리즈를 찾을 수 없음 (404)"
             else
               echo "has_changes=false" >> $GITHUB_OUTPUT
-              echo "이전 릴리즈 노트가 비어있음"
+              echo "release_id=" >> $GITHUB_OUTPUT
+              echo "API 호출 실패: HTTP $http_code"
+              echo "응답: $response_body"
             fi
           else
             echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "release_id=" >> $GITHUB_OUTPUT
             echo "이전 베타 릴리즈가 없음"
           fi
 
@@ -367,21 +398,52 @@ jobs:
         run: |
           has_previous="${{ needs.version-management.outputs.has_previous_beta }}"
           previous_beta="${{ needs.version-management.outputs.previous_beta }}"
+          release_id="${{ steps.get-previous-notes.outputs.release_id }}"
           
           if [[ "$has_previous" == "true" ]] && [[ ! -z "$previous_beta" ]]; then
             echo "이전 베타 릴리즈 삭제 중: $previous_beta"
+            echo "사용할 릴리즈 ID: $release_id"
             
-            # GitHub API를 통해 이전 릴리즈 삭제
-            release_id=$(curl -s -H "Authorization: token ${{ secrets.ADMIN_TOKEN }}" \
-              "https://api.github.com/repos/${{ github.repository }}/releases/tags/$previous_beta" \
-              | jq -r '.id // empty')
-            
-            if [ ! -z "$release_id" ] && [ "$release_id" != "null" ]; then
-              curl -X DELETE -H "Authorization: token ${{ secrets.ADMIN_TOKEN }}" \
-                "https://api.github.com/repos/${{ github.repository }}/releases/$release_id"
-              echo "이전 베타 릴리즈 삭제 완료: $release_id"
+            # 이전 스텝에서 가져온 릴리즈 ID 사용
+            if [ ! -z "$release_id" ] && [ "$release_id" != "null" ] && [ "$release_id" != "empty" ]; then
+              echo "릴리즈 ID $release_id 삭제 시도 중..."
+              
+              delete_response=$(curl -s -w "HTTPSTATUS:%{http_code}" \
+                -X DELETE \
+                -H "Authorization: token ${{ secrets.ADMIN_TOKEN }}" \
+                "https://api.github.com/repos/${{ github.repository }}/releases/$release_id")
+              
+              delete_http_code=$(echo "$delete_response" | tr -d '\n' | sed -e 's/.*HTTPSTATUS://')
+              delete_body=$(echo "$delete_response" | sed -e 's/HTTPSTATUS:.*//g')
+              
+              echo "삭제 API HTTP 상태 코드: $delete_http_code"
+              
+              if [ "$delete_http_code" = "204" ]; then
+                echo "이전 베타 릴리즈 삭제 완료: $release_id"
+              else
+                echo "릴리즈 삭제 실패: HTTP $delete_http_code"
+                echo "응답: $delete_body"
+                
+                # 대안: 릴리즈를 Draft로 변경
+                echo "대안으로 릴리즈를 Draft 상태로 변경 시도..."
+                draft_response=$(curl -s -w "HTTPSTATUS:%{http_code}" \
+                  -X PATCH \
+                  -H "Authorization: token ${{ secrets.ADMIN_TOKEN }}" \
+                  -H "Content-Type: application/json" \
+                  -d '{"draft": true}' \
+                  "https://api.github.com/repos/${{ github.repository }}/releases/$release_id")
+                
+                draft_http_code=$(echo "$draft_response" | tr -d '\n' | sed -e 's/.*HTTPSTATUS://')
+                
+                if [ "$draft_http_code" = "200" ]; then
+                  echo "릴리즈를 Draft 상태로 변경 완료"
+                else
+                  echo "Draft 변경도 실패: HTTP $draft_http_code"
+                fi
+              fi
             else
-              echo "이전 베타 릴리즈를 찾을 수 없음"
+              echo "유효한 릴리즈 ID가 없음 - 삭제할 수 없음"
+              echo "이전 스텝에서 릴리즈를 찾지 못했거나 이미 삭제됨"
             fi
           else
             echo "삭제할 이전 베타 릴리즈가 없음"
