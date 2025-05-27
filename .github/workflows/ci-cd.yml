@@ -47,9 +47,9 @@ jobs:
           name: lint-report
           path: app/build/reports/lint-results-debug.html
 
-  # PR 검증용 테스트 및 빌드 작업
-  validate-test-and-build:
-    name: PR Validation - Test and Build
+  # PR 검증용 테스트 작업
+  test-and-build:
+    name: Test and Build
     needs: [validate]
     if: |
       github.event_name == 'pull_request' && 
@@ -75,12 +75,9 @@ jobs:
           name: test-results
           path: app/build/reports/tests/testDebugUnitTest/
 
-      - name: Build Debug APK
-        run: ./gradlew assembleDebug
-
-  # 배포용 테스트 및 빌드 작업
-  test-and-build:
-    name: Test and Build
+  # 배포용 빌드 작업
+  build-for-deploy:
+    name: Build for Deploy
     runs-on: ubuntu-latest
     if: |
       (github.event_name == 'pull_request_target' && 
@@ -110,7 +107,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results
+          name: test-results-deploy
           path: app/build/reports/tests/testDebugUnitTest/
 
       - name: Set Timestamp
@@ -139,7 +136,7 @@ jobs:
   version-management:
     name: Version Management
     runs-on: ubuntu-latest
-    needs: [test-and-build]
+    needs: [build-for-deploy]
     if: |
       github.event_name == 'pull_request_target' && 
       github.event.pull_request.merged == true && 
@@ -194,7 +191,7 @@ jobs:
           fi
           
           next_version="$major.$minor.$patch"
-          beta_tag="v$next_version-beta.${{ needs.test-and-build.outputs.timestamp }}"
+          beta_tag="v$next_version-beta.${{ needs.build-for-deploy.outputs.timestamp }}"
           echo "Creating beta tag: $beta_tag"
           git tag -a "$beta_tag" -m "Beta release $beta_tag"
           git push origin "$beta_tag"
@@ -203,7 +200,7 @@ jobs:
   create-release:
     name: Create Release Tag
     runs-on: ubuntu-latest
-    needs: [test-and-build]
+    needs: [build-for-deploy]
     if: |
       github.event_name == 'pull_request_target' && 
       github.event.pull_request.merged == true && 
@@ -241,7 +238,7 @@ jobs:
   deploy:
     name: Deploy APK
     runs-on: ubuntu-latest
-    needs: [test-and-build]
+    needs: [build-for-deploy]
     if: |
       (github.event_name == 'pull_request_target' && 
        github.event.pull_request.merged == true) ||
