@@ -189,22 +189,54 @@ jobs:
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git config --global user.name "github-actions[bot]"
           
-          latest_tag=$(git tag -l "v*" | grep -v "beta" | sort -V | tail -n 1)
-          if [ -z "$latest_tag" ]; then
+          # 최신 정식 릴리즈 태그 가져오기 (beta가 아닌 태그 중 가장 최신)
+          latest_release=$(git tag -l "v*" | grep -v "beta" | sort -V | tail -n 1)
+          
+          # PR 브랜치 이름에서 타입 추출
+          branch_name="${{ github.head_ref }}"
+          
+          # 기본값 설정
+          if [ -z "$latest_release" ]; then
             major=1
             minor=0
             patch=0
           else
-            version=${latest_tag#v}
+            version=${latest_release#v}
             IFS='.' read -r major minor patch <<< "$version"
-            patch=$((patch + 1))
+            
+            # 브랜치 타입에 따라 다음 버전 결정
+            if [[ "$branch_name" =~ ^(major|breaking)/ ]]; then
+              major=$((major + 1))
+              minor=0
+              patch=0
+            elif [[ "$branch_name" =~ ^feat/ ]]; then
+              minor=$((minor + 1))
+              patch=0
+            else
+              patch=$((patch + 1))
+            fi
           fi
           
           next_version="$major.$minor.$patch"
+          
+          # 이전 베타 태그 찾기 (같은 버전의 가장 최신 베타)
+          previous_beta=$(git tag -l "v${next_version}-beta*" | sort -V | tail -n 1)
+          
+          # 새로운 베타 태그 생성
           beta_tag="v$next_version-beta.${{ needs.build-for-deploy.outputs.timestamp }}"
           echo "tag=$beta_tag" >> $GITHUB_OUTPUT
+          echo "version=$next_version" >> $GITHUB_OUTPUT
+          echo "has_previous_beta=false" >> $GITHUB_OUTPUT
           
-          echo "Creating beta tag: $beta_tag"
+          if [ ! -z "$previous_beta" ]; then
+            echo "has_previous_beta=true" >> $GITHUB_OUTPUT
+            echo "previous_beta=$previous_beta" >> $GITHUB_OUTPUT
+            # 이전 베타 태그 삭제
+            git tag -d "$previous_beta"
+            git push origin ":refs/tags/$previous_beta"
+          fi
+          
+          echo "Creating beta tag: $beta_tag (based on $latest_release)"
           git tag -a "$beta_tag" -m "Beta release $beta_tag"
           git push origin "$beta_tag"
 
@@ -282,12 +314,31 @@ jobs:
           echo "버전: $VERSION" >> CHANGELOG.md
           echo "" >> CHANGELOG.md
           
-          previous_tag=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
-          if [ -z "$previous_tag" ]; then
-            git log --pretty=format:"- %s" >> CHANGELOG.md
-          else
-            git log --pretty=format:"- %s" ${previous_tag}..HEAD >> CHANGELOG.md
+          # 이전 베타 릴리즈의 릴리즈 노트 가져오기
+          if [[ "${{ needs.version-management.outputs.has_previous_beta }}" == "true" ]]; then
+            previous_beta="${{ needs.version-management.outputs.previous_beta }}"
+            echo "이전 베타 릴리즈 노트 병합 중: $previous_beta"
+            
+            # GitHub API를 통해 이전 릴리즈 노트 가져오기
+            previous_notes=$(curl -s -H "Authorization: token ${{ secrets.ADMIN_TOKEN }}" \
+              "https://api.github.com/repos/${{ github.repository }}/releases/tags/$previous_beta" \
+              | jq -r '.body // empty')
+            
+            if [ ! -z "$previous_notes" ]; then
+              # 헤더 부분을 제외한 변경 사항만 추출
+              changes=$(echo "$previous_notes" | awk '/^- /')
+              if [ ! -z "$changes" ]; then
+                echo "$changes" >> CHANGELOG.md
+                echo "" >> CHANGELOG.md
+              fi
+            fi
           fi
+          
+          # 새로운 변경 사항 추가
+          echo "### 새로운 변경 사항" >> CHANGELOG.md
+          echo "" >> CHANGELOG.md
+          git log -1 --pretty=format:"- %s" >> CHANGELOG.md
+          echo "" >> CHANGELOG.md
 
       - name: Create Beta Release
         uses: softprops/action-gh-release@v1
