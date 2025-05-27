@@ -8,8 +8,6 @@ on:
     branches: ["dev", "main"]
   push:
     branches: ["main"]
-    tags:
-      - 'v*'
 
 # PR이 머지되기 전에 모든 체크가 통과되어야 함을 명시
 concurrency:
@@ -80,10 +78,8 @@ jobs:
     name: Build for Deploy
     runs-on: ubuntu-latest
     if: |
-      (github.event_name == 'pull_request_target' && 
-       github.event.pull_request.merged == true) ||
-      (github.event_name == 'push' && 
-       startsWith(github.ref, 'refs/tags/v'))
+      github.event_name == 'pull_request_target' && 
+      github.event.pull_request.merged == true
     outputs:
       build_type: ${{ github.base_ref == 'main' && 'release' || 'debug' }}
       timestamp: ${{ steps.set-timestamp.outputs.value }}
@@ -129,7 +125,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: build-output
-          path: app/build/outputs/apk/
+          path: |
+            app/build/outputs/apk/**/*.apk
+            app/build/outputs/apk/**/output-metadata.json
           retention-days: 1
 
   # 버전 관리 작업 (dev 브랜치 머지 시에만)
@@ -146,6 +144,7 @@ jobs:
       actions: write
     outputs:
       version_code: ${{ vars.VERSION_CODE }}
+      beta_tag: ${{ steps.create-beta-tag.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -175,6 +174,7 @@ jobs:
             core.setOutput('new_version', newVersion.toString());
 
       - name: Create Beta Tag
+        id: create-beta-tag
         run: |
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git config --global user.name "github-actions[bot]"
@@ -192,6 +192,8 @@ jobs:
           
           next_version="$major.$minor.$patch"
           beta_tag="v$next_version-beta.${{ needs.build-for-deploy.outputs.timestamp }}"
+          echo "tag=$beta_tag" >> $GITHUB_OUTPUT
+          
           echo "Creating beta tag: $beta_tag"
           git tag -a "$beta_tag" -m "Beta release $beta_tag"
           git push origin "$beta_tag"
@@ -207,6 +209,8 @@ jobs:
       github.base_ref == 'main'
     permissions:
       contents: write
+    outputs:
+      release_tag: ${{ steps.create-release-tag.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -215,7 +219,7 @@ jobs:
           token: ${{ secrets.ADMIN_TOKEN }}
 
       - name: Create Release Tag
-        id: create_tag
+        id: create-release-tag
         run: |
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git config --global user.name "github-actions[bot]"
@@ -228,22 +232,21 @@ jobs:
           
           version=$(echo $latest_beta | sed 's/^v\(.*\)-beta\..*/\1/')
           release_tag="v$version"
+          echo "tag=$release_tag" >> $GITHUB_OUTPUT
           
           echo "Creating release tag: $release_tag"
           git tag -a "$release_tag" -m "Release $release_tag"
           git push origin "$release_tag"
-          echo "tag_name=$release_tag" >> $GITHUB_OUTPUT
 
   # 배포 작업
   deploy:
     name: Deploy APK
     runs-on: ubuntu-latest
-    needs: [build-for-deploy]
+    needs: [build-for-deploy, version-management, create-release]
     if: |
-      (github.event_name == 'pull_request_target' && 
-       github.event.pull_request.merged == true) ||
-      (github.event_name == 'push' && 
-       startsWith(github.ref, 'refs/tags/v'))
+      github.event_name == 'pull_request_target' && 
+      github.event.pull_request.merged == true &&
+      (needs.version-management.result == 'success' || needs.create-release.result == 'success')
     permissions:
       contents: write
     steps:
@@ -263,9 +266,9 @@ jobs:
         id: release_notes
         run: |
           if [[ "${{ github.base_ref }}" == "main" ]]; then
-            tag=$(git tag -l "v*" | grep -v "beta" | sort -V | tail -n 1)
+            tag="${{ needs.create-release.outputs.release_tag }}"
           else
-            tag=$(git tag -l "v*-beta*" | sort -V | tail -n 1)
+            tag="${{ needs.version-management.outputs.beta_tag }}"
           fi
           
           echo "## 변경 사항" > CHANGELOG.md
@@ -285,9 +288,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.ADMIN_TOKEN }}
         with:
-          files: "**/*.apk"
-          tag_name: ${{ github.base_ref == 'main' && needs.create-release.outputs.tag_name || github.ref_name }}
-          name: ${{ github.base_ref == 'main' && needs.create-release.outputs.tag_name || github.ref_name }}
+          files: |
+            **/*.apk
+            **/output-metadata.json
+          tag_name: ${{ github.base_ref == 'main' && needs.create-release.outputs.release_tag || needs.version-management.outputs.beta_tag }}
+          name: ${{ github.base_ref == 'main' && needs.create-release.outputs.release_tag || needs.version-management.outputs.beta_tag }}
           body_path: CHANGELOG.md
           draft: false
           prerelease: ${{ github.base_ref != 'main' }} 
