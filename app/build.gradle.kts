@@ -16,6 +16,15 @@ fun loadConfigProperties(buildType: String): Properties {
     }
 }
 
+fun loadVersionProperties(): Properties {
+    return Properties().apply {
+        val propsFile = rootProject.file("version.properties")
+        if (propsFile.exists()) {
+            load(FileInputStream(propsFile))
+        }
+    }
+}
+
 android {
     namespace = "toy.practice.androidtest"
     compileSdk = 35
@@ -25,37 +34,25 @@ android {
         minSdk = 24
         targetSdk = 35
 
-        // GitHub Actions에서 이 값을 자동으로 증가시킬 예정
-        versionCode = 1
+        val versionProps = loadVersionProperties()
 
-        val versionProps =
-            Properties().apply {
-                val propsFile = rootProject.file("version.properties")
-                if (propsFile.exists()) {
-                    load(FileInputStream(propsFile))
-                }
-            }
+        // GitHub Actions에서 관리하는 versionCode
+        versionCode = (versionProps["VERSION_CODE"] as? String)?.toIntOrNull() ?: 1
 
-        val vMajor = (versionProps["VERSION_MAJOR"] as? String)?.toIntOrNull() ?: 1
+        // 버전 정보 추출
+        val vMajor = (versionProps["VERSION_MAJOR"] as? String)?.toIntOrNull() ?: 0
         val vMinor = (versionProps["VERSION_MINOR"] as? String)?.toIntOrNull() ?: 0
-        val vPatch = (versionProps["VERSION_PATCH"] as? String)?.toIntOrNull() ?: 0
-        val isBeta = (versionProps["IS_BETA"] as? String)?.toBoolean() ?: false
+        val vPatch = (versionProps["VERSION_PATCH"] as? String)?.toIntOrNull() ?: 1
 
-        // beta 버전일 경우 timestamp 포함
-        versionName =
-            if (isBeta) {
-                val timestamp = (versionProps["TIMESTAMP"] as? String) ?: ""
-                "$vMajor.$vMinor.$vPatch-beta.$timestamp"
-            } else {
-                "$vMajor.$vMinor.$vPatch"
-            }
+        // 기본 버전명 (x.y.z)
+        versionName = "$vMajor.$vMinor.$vPatch"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildFeatures {
         compose = true
-        buildConfig = true // BuildConfig 생성 활성화
+        buildConfig = true
     }
 
     buildTypes {
@@ -63,8 +60,6 @@ android {
         val releaseProps = loadConfigProperties("release")
 
         debug {
-            // debug 빌드일 때 'd' 접미사 추가
-            versionNameSuffix = "d"
             debugProps.forEach { (key, value) ->
                 buildConfigField("String", key.toString(), "\"$value\"")
             }
@@ -97,8 +92,35 @@ android {
         outputs
             .map { it as com.android.build.gradle.internal.api.BaseVariantOutputImpl }
             .forEach { output ->
-                val versionName = variant.versionName ?: defaultConfig.versionName
-                output.outputFileName = "android-toy-$versionName-${variant.buildType.name}.apk"
+                val versionProps = loadVersionProperties()
+                val baseVersionName = variant.versionName ?: defaultConfig.versionName
+
+                // 빌드 타입에 따라 버전명 결정
+                val finalVersionName =
+                    when {
+                        // 릴리즈 빌드는 항상 정식 버전명 사용
+                        variant.buildType.name == "release" -> baseVersionName
+
+                        // 디버그 빌드는 beta 태그 추가
+                        else -> {
+                            val isBeta = (versionProps["IS_BETA"] as? String)?.toBoolean() ?: true
+                            val timestamp = (versionProps["TIMESTAMP"] as? String)
+
+                            buildString {
+                                append(baseVersionName)
+                                if (isBeta) {
+                                    append("-beta")
+                                    if (!timestamp.isNullOrEmpty()) {
+                                        append(".$timestamp")
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                // applicationId를 사용하여 APK 파일명 생성
+                val appName = variant.applicationId.replace(".", "-")
+                output.outputFileName = "$appName-$finalVersionName-${variant.buildType.name}.apk"
             }
     }
 
