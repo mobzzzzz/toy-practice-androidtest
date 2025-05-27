@@ -169,3 +169,6 @@ gradle-app.setting
 version.properties
 
 # End of https://www.toptal.com/developers/gitignore/api/macos,windows,android,gradle,kotlin,java
+
+# Custom temporary files
+.pr-description.md
