@@ -86,15 +86,40 @@ jobs:
       - name: Set Version Info
         id: set-version
         run: |
+          # 최신 태그에서 버전 정보 추출
+          latest_tag=$(git tag -l "v*" | grep -v "beta" | sort -V | tail -n 1)
+          if [ -z "$latest_tag" ]; then
+            major=1
+            minor=0
+            patch=0
+          else
+            version=${latest_tag#v}  # v 제거
+            IFS='.' read -r major minor patch <<< "$version"
+          fi
+          
           if [[ "${{ github.base_ref }}" == "main" ]]; then
-            version_name="${{ vars.VERSION_MAJOR }}.${{ vars.VERSION_MINOR }}.${{ vars.VERSION_PATCH }}"
+            # main 브랜치는 현재 태그 버전 사용
+            version_name="$major.$minor.$patch"
             echo "version_name=$version_name" >> $GITHUB_OUTPUT
             echo "build_type=release" >> $GITHUB_OUTPUT
           else
+            # dev 브랜치는 beta 태그 추가
             timestamp=$(date +%Y%m%d%H%M%S)
-            version_name="${{ vars.VERSION_MAJOR }}.${{ vars.VERSION_MINOR }}.${{ vars.VERSION_PATCH }}-beta.$timestamp"
+            version_name="$major.$minor.$patch-beta.$timestamp"
             echo "version_name=$version_name" >> $GITHUB_OUTPUT
             echo "build_type=debug" >> $GITHUB_OUTPUT
+          fi
+          
+          # version.properties 파일 생성
+          echo "VERSION_CODE=${{ vars.VERSION_CODE }}" > version.properties
+          echo "VERSION_MAJOR=$major" >> version.properties
+          echo "VERSION_MINOR=$minor" >> version.properties
+          echo "VERSION_PATCH=$patch" >> version.properties
+          if [[ "${{ github.base_ref }}" == "main" ]]; then
+            echo "IS_BETA=false" >> version.properties
+          else
+            echo "IS_BETA=true" >> version.properties
+            echo "TIMESTAMP=$timestamp" >> version.properties
           fi
 
       # APK 빌드
