@@ -1,3 +1,4 @@
+import java.io.ByteArrayOutputStream
 import java.io.FileInputStream
 import java.util.Properties
 
@@ -16,12 +17,22 @@ fun loadConfigProperties(buildType: String): Properties {
     }
 }
 
-fun loadVersionProperties(): Properties {
-    return Properties().apply {
-        val propsFile = rootProject.file("version.properties")
-        if (propsFile.exists()) {
-            load(FileInputStream(propsFile))
+fun getVersionFromTag(): Triple<Int, Int, Int> {
+    try {
+        val stdout = ByteArrayOutputStream()
+        exec {
+            commandLine("git", "describe", "--tags", "--abbrev=0")
+            standardOutput = stdout
         }
+        val tag = stdout.toString().trim()
+        val version = tag.removePrefix("v").split(".")
+        return Triple(
+            version.getOrNull(0)?.toIntOrNull() ?: 1,
+            version.getOrNull(1)?.toIntOrNull() ?: 0,
+            version.getOrNull(2)?.toIntOrNull() ?: 0,
+        )
+    } catch (e: Exception) {
+        return Triple(1, 0, 0)
     }
 }
 
@@ -34,18 +45,21 @@ android {
         minSdk = 24
         targetSdk = 35
 
-        val versionProps = loadVersionProperties()
+        // 버전 코드는 환경변수나 프로젝트 속성에서 가져옴
+        versionCode = System.getenv("VERSION_CODE")?.toIntOrNull() // CI/CD
+            ?: project.findProperty("VERSION_CODE")?.toString()?.toIntOrNull() // 로컬
+            ?: 1 // 기본값
 
-        // GitHub Actions에서 관리하는 versionCode
-        versionCode = (versionProps["VERSION_CODE"] as? String)?.toIntOrNull() ?: 1
-
-        // 버전 정보 추출
-        val vMajor = (versionProps["VERSION_MAJOR"] as? String)?.toIntOrNull() ?: 0
-        val vMinor = (versionProps["VERSION_MINOR"] as? String)?.toIntOrNull() ?: 0
-        val vPatch = (versionProps["VERSION_PATCH"] as? String)?.toIntOrNull() ?: 1
-
-        // 기본 버전명 (x.y.z)
-        versionName = "$vMajor.$vMinor.$vPatch"
+        // 버전명은 Git 태그 기반
+        val (major, minor, patch) = getVersionFromTag()
+        versionName =
+            buildString {
+                append("$major.$minor.$patch")
+                if (!project.hasProperty("release")) { // 릴리즈 빌드가 아닐 경우
+                    append("-beta")
+                    System.getenv("BUILD_TIMESTAMP")?.let { append(".$it") }
+                }
+            }
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -92,35 +106,8 @@ android {
         outputs
             .map { it as com.android.build.gradle.internal.api.BaseVariantOutputImpl }
             .forEach { output ->
-                val versionProps = loadVersionProperties()
-                val baseVersionName = variant.versionName ?: defaultConfig.versionName
-
-                // 빌드 타입에 따라 버전명 결정
-                val finalVersionName =
-                    when {
-                        // 릴리즈 빌드는 항상 정식 버전명 사용
-                        variant.buildType.name == "release" -> baseVersionName
-
-                        // 디버그 빌드는 beta 태그 추가
-                        else -> {
-                            val isBeta = (versionProps["IS_BETA"] as? String)?.toBoolean() ?: true
-                            val timestamp = (versionProps["TIMESTAMP"] as? String)
-
-                            buildString {
-                                append(baseVersionName)
-                                if (isBeta) {
-                                    append("-beta")
-                                    if (!timestamp.isNullOrEmpty()) {
-                                        append(".$timestamp")
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                // applicationId를 사용하여 APK 파일명 생성
                 val appName = variant.applicationId.replace(".", "-")
-                output.outputFileName = "$appName-$finalVersionName-${variant.buildType.name}.apk"
+                output.outputFileName = "$appName-${variant.versionName}-${variant.buildType.name}.apk"
             }
     }
 
