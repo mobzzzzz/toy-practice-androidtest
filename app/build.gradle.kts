@@ -19,6 +19,16 @@ fun loadConfigProperties(buildType: String): Properties {
 
 fun getVersionFromTag(): Triple<Int, Int, Int> {
     try {
+        // CI/CD에서 생성한 베타 태그가 있는 경우 해당 버전 사용
+        System.getenv("BETA_VERSION")?.let { betaVersion ->
+            val version = betaVersion.split(".")
+            return Triple(
+                version.getOrNull(0)?.toIntOrNull() ?: 1,
+                version.getOrNull(1)?.toIntOrNull() ?: 0,
+                version.getOrNull(2)?.toIntOrNull() ?: 0,
+            )
+        }
+
         val stdout = ByteArrayOutputStream()
         exec {
             commandLine("git", "describe", "--tags", "--abbrev=0")
