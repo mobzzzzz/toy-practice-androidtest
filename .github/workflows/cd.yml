@@ -64,8 +64,10 @@ jobs:
           BUILD_TIMESTAMP: ${{ steps.set-timestamp.outputs.value }}
         run: |
           if [[ "${{ github.base_ref }}" == "main" ]]; then
+            echo "Building release APK with version code: $VERSION_CODE"
             ./gradlew assembleRelease -Prelease
           else
+            echo "Building debug APK with version code: $VERSION_CODE"
             ./gradlew assembleDebug
           fi
 
@@ -88,7 +90,7 @@ jobs:
       contents: write
       actions: write
     outputs:
-      version_code: ${{ vars.VERSION_CODE }}
+      version_code: ${{ steps.create-beta-tag.outputs.version_code }}
       beta_tag: ${{ steps.create-beta-tag.outputs.tag }}
       has_previous_beta: ${{ steps.create-beta-tag.outputs.has_previous_beta }}
       previous_beta: ${{ steps.create-beta-tag.outputs.previous_beta }}
@@ -98,27 +100,6 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.merge_commit_sha }}
           token: ${{ secrets.ADMIN_TOKEN }}
-
-      - name: Update Version Code
-        id: version-update
-        uses: actions/github-script@v7
-        env:
-          GH_TOKEN: ${{ secrets.ADMIN_TOKEN }}
-        with:
-          github-token: ${{ secrets.ADMIN_TOKEN }}
-          script: |
-            const currentVersion = parseInt('${{ vars.VERSION_CODE }}') || 0;
-            const newVersion = currentVersion + 1;
-            
-            await github.rest.actions.updateRepoVariable({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              name: 'VERSION_CODE',
-              value: newVersion.toString()
-            });
-            
-            console.log(`Version Code updated: ${currentVersion} → ${newVersion}`);
-            core.setOutput('new_version', newVersion.toString());
 
       - name: Create Beta Tag
         id: create-beta-tag
@@ -181,10 +162,12 @@ jobs:
           # 이전 베타 태그 찾기 (같은 버전의 가장 최신 베타)
           previous_beta=$(git tag -l "v${next_version}-beta*" | sort -V | tail -n 1)
           
-          # 새로운 베타 태그 생성
+          # 새로운 베타 태그 생성 (현재 version code 사용)
+          current_version_code="${{ vars.VERSION_CODE }}"
           beta_tag="v$next_version-beta.${{ needs.build-for-deploy.outputs.timestamp }}"
           echo "tag=$beta_tag" >> $GITHUB_OUTPUT
           echo "version=$next_version" >> $GITHUB_OUTPUT
+          echo "version_code=$current_version_code" >> $GITHUB_OUTPUT
           echo "has_previous_beta=false" >> $GITHUB_OUTPUT
           
           if [ ! -z "$previous_beta" ]; then
@@ -193,8 +176,8 @@ jobs:
             echo "이전 베타 태그 발견: $previous_beta (릴리즈 작업에서 삭제 예정)"
           fi
           
-          echo "Creating beta tag: $beta_tag (based on $latest_release)"
-          git tag -a "$beta_tag" -m "Beta release $beta_tag"
+          echo "Creating beta tag: $beta_tag (version code: $current_version_code, based on $latest_release)"
+          git tag -a "$beta_tag" -m "Beta release $beta_tag (version code: $current_version_code)"
           git push origin "$beta_tag"
 
   # main 브랜치 머지 시 릴리즈 태그 생성
@@ -205,14 +188,37 @@ jobs:
     if: github.base_ref == 'main'
     permissions:
       contents: write
+      actions: write
     outputs:
       release_tag: ${{ steps.create-release-tag.outputs.tag }}
+      new_version_code: ${{ steps.version-update.outputs.new_version }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.merge_commit_sha }}
           token: ${{ secrets.ADMIN_TOKEN }}
+
+      - name: Update Version Code
+        id: version-update
+        uses: actions/github-script@v7
+        env:
+          GH_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+        with:
+          github-token: ${{ secrets.ADMIN_TOKEN }}
+          script: |
+            const currentVersion = parseInt('${{ vars.VERSION_CODE }}') || 0;
+            const newVersion = currentVersion + 1;
+            
+            await github.rest.actions.updateRepoVariable({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              name: 'VERSION_CODE',
+              value: newVersion.toString()
+            });
+            
+            console.log(`Version Code updated: ${currentVersion} → ${newVersion}`);
+            core.setOutput('new_version', newVersion.toString());
 
       - name: Create Release Tag
         id: create-release-tag
@@ -465,10 +471,12 @@ jobs:
         run: |
           BETA_TAG="${{ needs.version-management.outputs.beta_tag }}"
           VERSION="${BETA_TAG#v}"
+          VERSION_CODE="${{ needs.version-management.outputs.version_code }}"
           
           echo "## 베타 릴리즈 노트" > CHANGELOG.md
           echo "" >> CHANGELOG.md
-          echo "버전: $VERSION" >> CHANGELOG.md
+          echo "**버전**: $VERSION" >> CHANGELOG.md
+          echo "**Version Code**: $VERSION_CODE" >> CHANGELOG.md
           echo "" >> CHANGELOG.md
           
           # 새로운 변경 사항 추가
@@ -524,10 +532,12 @@ jobs:
         run: |
           RELEASE_TAG="${{ needs.create-release-tag.outputs.release_tag }}"
           VERSION="${RELEASE_TAG#v}"
+          VERSION_CODE="${{ needs.create-release-tag.outputs.new_version_code }}"
           
           echo "## 릴리즈 노트" > CHANGELOG.md
           echo "" >> CHANGELOG.md
-          echo "버전: $VERSION" >> CHANGELOG.md
+          echo "**버전**: $VERSION" >> CHANGELOG.md
+          echo "**Version Code**: $VERSION_CODE" >> CHANGELOG.md
           echo "" >> CHANGELOG.md
           
           previous_tag=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
