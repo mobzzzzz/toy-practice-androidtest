@@ -75,35 +75,51 @@ jobs:
         id: auto-sync
         run: |
           echo "🔄 main → dev 자동 동기화 시작..."
+          echo "📋 전략: 깔끔한 히스토리 유지 (불필요한 merge 커밋 방지)"
           
           # dev 브랜치로 전환
           git checkout dev
           git reset --hard origin/dev
           
-          # main의 변경사항을 dev에 병합 시도
-          if git merge origin/main --no-ff -m "sync: merge main into dev
-
-          - 자동 동기화를 통해 main 브랜치의 최신 변경사항을 dev에 반영
-          - 트리거: ${{ github.event_name }} (${{ github.ref }})
-          - 시간: $(date '+%Y-%m-%d %H:%M:%S KST')"; then
-            echo "✅ 자동 병합 성공"
-            git push origin dev
-            echo "🎉 동기화 완료!"
-            echo "sync_success=true" >> $GITHUB_OUTPUT
+          # Fast-forward 가능한지 확인
+          if git merge-base --is-ancestor origin/dev origin/main; then
+            echo "✅ Fast-forward 병합 가능"
+            # Fast-forward merge (커밋 기록 없음)
+            if git merge origin/main --ff-only; then
+              echo "✅ Fast-forward 병합 성공 (커밋 기록 없음)"
+              git push origin dev
+              echo "🎉 동기화 완료!"
+              echo "sync_success=true" >> $GITHUB_OUTPUT
+              echo "merge_type=fast-forward" >> $GITHUB_OUTPUT
+            else
+              echo "❌ Fast-forward 실패 (예상치 못한 오류)"
+              echo "sync_success=false" >> $GITHUB_OUTPUT
+            fi
           else
-            echo "❌ 충돌로 인한 자동 병합 실패"
-            echo "sync_success=false" >> $GITHUB_OUTPUT
-            
-            # 충돌 상태 정리
-            git merge --abort
-            
-            # 충돌 파일들 확인
-            git checkout dev
-            git merge origin/main --no-commit --no-ff || true
-            conflict_files=$(git diff --name-only --diff-filter=U 2>/dev/null || echo "알 수 없음")
-            git merge --abort 2>/dev/null || true
-            
-            echo "conflict_files=$conflict_files" >> $GITHUB_OUTPUT
+            echo "⚠️ Fast-forward 불가능 - 일반 병합 시도"
+            # 일반 merge 시도 (충돌 가능성 있음)
+            if git merge origin/main --no-edit; then
+              echo "✅ 일반 병합 성공"
+              git push origin dev
+              echo "🎉 동기화 완료!"
+              echo "sync_success=true" >> $GITHUB_OUTPUT
+              echo "merge_type=merge" >> $GITHUB_OUTPUT
+            else
+              echo "❌ 충돌로 인한 병합 실패"
+              echo "sync_success=false" >> $GITHUB_OUTPUT
+              
+              # 충돌 상태 정리
+              git merge --abort
+              
+              # 충돌 파일들 확인
+              git checkout dev
+              git merge origin/main --no-commit --no-ff || true
+              conflict_files=$(git diff --name-only --diff-filter=U 2>/dev/null || echo "알 수 없음")
+              git merge --abort 2>/dev/null || true
+              
+              echo "conflict_files=$conflict_files" >> $GITHUB_OUTPUT
+              echo "merge_type=conflict" >> $GITHUB_OUTPUT
+            fi
           fi
 
       - name: Create summary
@@ -120,7 +136,13 @@ jobs:
           elif [ "${{ steps.check-sync.outputs.sync_needed }}" == "false" ]; then
             echo "- **상태**: ✅ 이미 최신 상태" >> $GITHUB_STEP_SUMMARY
           elif [ "${{ steps.auto-sync.outputs.sync_success }}" == "true" ]; then
-            echo "- **상태**: ✅ 자동 동기화 성공" >> $GITHUB_STEP_SUMMARY
+            if [ "${{ steps.auto-sync.outputs.merge_type }}" == "fast-forward" ]; then
+              echo "- **상태**: ✅ Fast-forward 동기화 성공 (커밋 기록 없음)" >> $GITHUB_STEP_SUMMARY
+              echo "- **방식**: 🚀 Fast-forward (깔끔한 히스토리)" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "- **상태**: ✅ 일반 병합 동기화 성공" >> $GITHUB_STEP_SUMMARY
+              echo "- **방식**: 🔀 Merge commit (필요에 의한 병합)" >> $GITHUB_STEP_SUMMARY
+            fi
           elif [ "${{ steps.auto-sync.outputs.sync_success }}" == "false" ]; then
             echo "- **상태**: ⚠️ 충돌 감지 - 수동 동기화 필요" >> $GITHUB_STEP_SUMMARY
             echo "- **충돌 파일**: ${{ steps.auto-sync.outputs.conflict_files }}" >> $GITHUB_STEP_SUMMARY
@@ -128,9 +150,11 @@ jobs:
             echo "### 📋 수동 해결 방법:" >> $GITHUB_STEP_SUMMARY
             echo "1. 로컬에서 \`git checkout dev\` 실행" >> $GITHUB_STEP_SUMMARY
             echo "2. \`git merge main\` 실행하여 충돌 확인" >> $GITHUB_STEP_SUMMARY
-            echo "3. 충돌 파일들을 수동으로 해결" >> $GITHUB_STEP_SUMMARY
+            echo "3. **충돌 해결 시 main 브랜치 우선 선택** (hotfix, release 보존)" >> $GITHUB_STEP_SUMMARY
+            echo "   - 중요한 변경사항: \`git checkout --theirs <파일명>\` (main 선택)" >> $GITHUB_STEP_SUMMARY
+            echo "   - 개발 변경사항: 수동으로 병합하여 보존" >> $GITHUB_STEP_SUMMARY
             echo "4. \`git add .\` 실행" >> $GITHUB_STEP_SUMMARY
-            echo "5. \`git commit -m \"sync: resolve merge conflicts from main\"\` 실행" >> $GITHUB_STEP_SUMMARY
+            echo "5. \`git commit\` 실행 (기본 메시지 사용)" >> $GITHUB_STEP_SUMMARY
             echo "6. \`git push origin dev\` 실행" >> $GITHUB_STEP_SUMMARY
           else
             echo "- **상태**: ❌ 동기화 실패" >> $GITHUB_STEP_SUMMARY
