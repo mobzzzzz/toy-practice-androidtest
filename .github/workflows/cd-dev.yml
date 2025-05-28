@@ -4,6 +4,14 @@ on:
   pull_request_target:
     types: [closed]
     branches: ["dev"]
+    # 문서나 워크플로우 변경만 있는 경우 배포 스킵
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+      - 'README*'
+      - '.gitignore'
+      - '.editorconfig'
+      - '.cursor/**'
 
 # dev 브랜치 배포 작업은 순차적으로 실행 (여러 PR 동시 머지 시 대기열 처리)
 concurrency:
@@ -11,10 +19,69 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # 배포 스킵 여부 확인
+  check-skip-deployment:
+    name: Check Skip Deployment
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.merged == true
+    outputs:
+      should_skip: ${{ steps.check-skip.outputs.should_skip }}
+      skip_reason: ${{ steps.check-skip.outputs.skip_reason }}
+    steps:
+      - name: Check Skip Conditions
+        id: check-skip
+        run: |
+          # PR 제목과 커밋 메시지에서 스킵 키워드 확인
+          pr_title="${{ github.event.pull_request.title }}"
+          pr_body="${{ github.event.pull_request.body }}"
+          
+          # 스킵 키워드 목록 (실무에서 흔히 사용하는 패턴)
+          skip_keywords=(
+            "[skip ci]" "[ci skip]" "[no ci]" "[skip actions]" "[actions skip]"
+            "[skip deploy]" "[deploy skip]" "[no deploy]" 
+            "[docs only]" "[docs]" "[documentation]"
+            "[workflow only]" "[workflow]" "[ci only]"
+            "[skip build]" "[build skip]" "[no build]"
+          )
+          
+          should_skip="false"
+          skip_reason=""
+          
+          # PR 제목에서 스킵 키워드 확인
+          for keyword in "${skip_keywords[@]}"; do
+            if [[ "$pr_title" == *"$keyword"* ]]; then
+              should_skip="true"
+              skip_reason="PR 제목에 '$keyword' 키워드 발견"
+              break
+            fi
+          done
+          
+          # PR 본문에서 스킵 키워드 확인 (제목에서 발견되지 않은 경우)
+          if [ "$should_skip" = "false" ]; then
+            for keyword in "${skip_keywords[@]}"; do
+              if [[ "$pr_body" == *"$keyword"* ]]; then
+                should_skip="true"
+                skip_reason="PR 본문에 '$keyword' 키워드 발견"
+                break
+              fi
+            done
+          fi
+          
+          echo "should_skip=$should_skip" >> $GITHUB_OUTPUT
+          echo "skip_reason=$skip_reason" >> $GITHUB_OUTPUT
+          
+          if [ "$should_skip" = "true" ]; then
+            echo "🚫 배포 스킵: $skip_reason"
+            echo "💡 배포를 원하는 경우 PR 제목/본문에서 스킵 키워드를 제거하고 다시 머지하세요."
+          else
+            echo "✅ 배포 진행: 스킵 조건에 해당하지 않음"
+          fi
+
   # GitHub 설정 검증
   validate-config:
     name: Validate Configuration
-    if: github.event.pull_request.merged == true
+    if: github.event.pull_request.merged == true && needs.check-skip-deployment.outputs.should_skip != 'true'
+    needs: [check-skip-deployment]
     uses: ./.github/workflows/validate-github-config.yml
     secrets: inherit
 
@@ -22,7 +89,8 @@ jobs:
   generate-timestamp:
     name: Generate Timestamp
     runs-on: ubuntu-latest
-    needs: [validate-config]
+    needs: [validate-config, check-skip-deployment]
+    if: needs.check-skip-deployment.outputs.should_skip != 'true'
     outputs:
       timestamp: ${{ steps.set-timestamp.outputs.value }}
     steps:
@@ -35,7 +103,8 @@ jobs:
   # APK 빌드
   build-apk:
     name: Build Debug APK
-    needs: [validate-config, generate-timestamp]
+    needs: [validate-config, generate-timestamp, check-skip-deployment]
+    if: needs.check-skip-deployment.outputs.should_skip != 'true'
     uses: ./.github/workflows/build-apk.yml
     with:
       build_type: debug
@@ -48,7 +117,8 @@ jobs:
   version-management:
     name: Version Management
     runs-on: ubuntu-latest
-    needs: [build-apk, generate-timestamp]
+    needs: [build-apk, generate-timestamp, check-skip-deployment]
+    if: needs.check-skip-deployment.outputs.should_skip != 'true'
     permissions:
       contents: write
       actions: write
@@ -168,7 +238,8 @@ jobs:
   # 베타 릴리즈 생성
   create-beta-release:
     name: Create Beta Release
-    needs: [build-apk, version-management]
+    needs: [build-apk, version-management, check-skip-deployment]
+    if: needs.check-skip-deployment.outputs.should_skip != 'true'
     uses: ./.github/workflows/create-release.yml
     with:
       release_type: beta
@@ -178,4 +249,26 @@ jobs:
       previous_beta_tag: ${{ needs.version-management.outputs.previous_beta }}
       has_previous_beta: ${{ needs.version-management.outputs.has_previous_beta }}
     secrets:
-      ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }} 
+      ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+
+  # 배포 스킵 알림
+  deployment-skipped:
+    name: Deployment Skipped
+    runs-on: ubuntu-latest
+    needs: [check-skip-deployment]
+    if: github.event.pull_request.merged == true && needs.check-skip-deployment.outputs.should_skip == 'true'
+    steps:
+      - name: Skip Notification
+        run: |
+          echo "🚫 **배포가 스킵되었습니다**"
+          echo ""
+          echo "**스킵 이유:** ${{ needs.check-skip-deployment.outputs.skip_reason }}"
+          echo ""
+          echo "**스킵 조건:**"
+          echo "- PR 제목/본문에 스킵 키워드 포함"
+          echo "- 문서나 설정 파일만 변경 (paths-ignore)"
+          echo ""
+          echo "**배포를 원하는 경우:**"
+          echo "1. PR 제목/본문에서 스킵 키워드 제거"
+          echo "2. 새로운 커밋 추가 후 다시 머지"
+          echo "3. 또는 수동으로 workflow_dispatch 실행" 
