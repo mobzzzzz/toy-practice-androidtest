@@ -81,7 +81,11 @@ jobs:
           git reset --hard origin/dev
           
           # main의 변경사항을 dev에 병합 시도
-          if git merge origin/main --no-edit; then
+          if git merge origin/main --no-ff -m "sync: merge main into dev
+
+          - 자동 동기화를 통해 main 브랜치의 최신 변경사항을 dev에 반영
+          - 트리거: ${{ github.event_name }} (${{ github.ref }})
+          - 시간: $(date '+%Y-%m-%d %H:%M:%S KST')"; then
             echo "✅ 자동 병합 성공"
             git push origin dev
             echo "🎉 동기화 완료!"
@@ -125,8 +129,9 @@ jobs:
             echo "1. 로컬에서 \`git checkout dev\` 실행" >> $GITHUB_STEP_SUMMARY
             echo "2. \`git merge main\` 실행하여 충돌 확인" >> $GITHUB_STEP_SUMMARY
             echo "3. 충돌 파일들을 수동으로 해결" >> $GITHUB_STEP_SUMMARY
-            echo "4. \`git add .\` 및 \`git commit\` 실행" >> $GITHUB_STEP_SUMMARY
-            echo "5. \`git push origin dev\` 실행" >> $GITHUB_STEP_SUMMARY
+            echo "4. \`git add .\` 실행" >> $GITHUB_STEP_SUMMARY
+            echo "5. \`git commit -m \"sync: resolve merge conflicts from main\"\` 실행" >> $GITHUB_STEP_SUMMARY
+            echo "6. \`git push origin dev\` 실행" >> $GITHUB_STEP_SUMMARY
           else
             echo "- **상태**: ❌ 동기화 실패" >> $GITHUB_STEP_SUMMARY
           fi
