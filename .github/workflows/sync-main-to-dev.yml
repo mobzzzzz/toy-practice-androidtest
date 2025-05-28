@@ -1,10 +1,9 @@
 name: Sync Main to Dev
 
 on:
-  # main 브랜치에 push될 때 (릴리즈 태그 포함)
+  # main 브랜치에 push될 때만 (태그는 제외)
   push:
     branches: [main]
-    tags: ['v*']
   
   # 수동 실행도 가능하도록
   workflow_dispatch:
@@ -24,6 +23,8 @@ jobs:
   sync-branches:
     name: Sync Main to Dev
     runs-on: ubuntu-latest
+    # 태그 push는 제외 (릴리즈 태그 생성 시 중복 실행 방지)
+    if: github.ref_type != 'tag'
     permissions:
       contents: write
       pull-requests: write
@@ -45,6 +46,16 @@ jobs:
         id: check-sync
         run: |
           echo "🔍 Checking if synchronization is needed..."
+          echo "📋 Event: ${{ github.event_name }}"
+          echo "📋 Ref: ${{ github.ref }}"
+          echo "📋 Ref Type: ${{ github.ref_type }}"
+          
+          # 태그 이벤트인 경우 스킵
+          if [ "${{ github.ref_type }}" == "tag" ]; then
+            echo "⏭️ Skipping sync for tag event to prevent duplicate execution"
+            echo "sync_needed=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
           
           # 최신 상태로 업데이트
           git fetch origin
@@ -109,6 +120,8 @@ jobs:
           # 충돌 파일들을 확인하고 상태 저장
           echo "## 🔄 Main → Dev 동기화 충돌 해결 필요" > conflict-resolution.md
           echo "" >> conflict-resolution.md
+          echo "**트리거 이벤트**: ${{ github.event_name }} (${{ github.ref }})" >> conflict-resolution.md
+          echo "" >> conflict-resolution.md
           echo "다음 파일들에서 충돌이 발생했습니다:" >> conflict-resolution.md
           echo "" >> conflict-resolution.md
           git status --porcelain | grep "^UU\|^AA\|^DD" | while read status file; do
@@ -126,6 +139,7 @@ jobs:
           git add .
           git commit -m "conflict: main → dev 동기화 중 충돌 발생 - 수동 해결 필요
 
+          트리거: ${{ github.event_name }} (${{ github.ref }})
           충돌 파일들:
           $(git status --porcelain | grep '^UU\|^AA\|^DD' | cut -c4-)
           
@@ -149,8 +163,13 @@ jobs:
           echo "## 🔄 Branch Sync Summary" >> $GITHUB_STEP_SUMMARY
           echo "- **Source**: main" >> $GITHUB_STEP_SUMMARY
           echo "- **Target**: dev" >> $GITHUB_STEP_SUMMARY
+          echo "- **Event**: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Ref**: ${{ github.ref }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Ref Type**: ${{ github.ref_type }}" >> $GITHUB_STEP_SUMMARY
           
-          if [ "${{ steps.check-sync.outputs.sync_needed }}" == "false" ]; then
+          if [ "${{ github.ref_type }}" == "tag" ]; then
+            echo "- **Status**: ⏭️ Skipped (tag event - prevents duplicate execution)" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ steps.check-sync.outputs.sync_needed }}" == "false" ]; then
             echo "- **Status**: ✅ Already up to date" >> $GITHUB_STEP_SUMMARY
           elif [ "${{ steps.auto-sync.outputs.merge_success }}" == "true" ]; then
             echo "- **Status**: ✅ Automatic sync successful" >> $GITHUB_STEP_SUMMARY
