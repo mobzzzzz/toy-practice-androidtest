@@ -97,6 +97,18 @@ jobs:
           
           version=$(echo $latest_beta | sed 's/^v\(.*\)-beta\..*/\1/')
           
+          # PR 브랜치 이름 확인 (hotfix인지 체크)
+          pr_branch="${{ github.head_ref }}"
+          
+          # hotfix 브랜치인 경우 patch 버전 증가
+          if [[ "$pr_branch" =~ ^hotfix/ ]]; then
+            echo "🔧 Hotfix 브랜치 감지: $pr_branch"
+            IFS='.' read -r major minor patch <<< "$version"
+            patch=$((patch + 1))
+            version="$major.$minor.$patch"
+            echo "📈 Hotfix 버전 증가: v$version"
+          fi
+          
           # 버전이 0.0.0인 경우 (신규 프로젝트) 경고 메시지
           if [ "$version" = "0.0.0" ]; then
             echo "⚠️  Warning: Creating release from version 0.0.0 (new project)"
@@ -105,6 +117,18 @@ jobs:
           
           release_tag="v$version"
           echo "tag=$release_tag" >> $GITHUB_OUTPUT
+          
+          # 기존 태그가 있는지 확인
+          if git tag -l | grep -q "^$release_tag$"; then
+            if [[ "$pr_branch" =~ ^hotfix/ ]]; then
+              echo "🔄 Hotfix: 기존 태그 $release_tag 삭제 후 재생성"
+              git tag -d "$release_tag" || true
+              git push origin ":refs/tags/$release_tag" || true
+            else
+              echo "❌ 태그 $release_tag가 이미 존재합니다"
+              exit 1
+            fi
+          fi
           
           echo "Creating release tag: $release_tag (from beta: $latest_beta)"
           git tag -a "$release_tag" -m "Release $release_tag"
