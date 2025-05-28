@@ -1,0 +1,111 @@
+name: Sync Main to Dev
+
+on:
+  # main 브랜치에 push될 때 (릴리즈 태그 포함)
+  push:
+    branches: [main]
+    tags: ['v*']
+  
+  # 수동 실행도 가능하도록
+  workflow_dispatch:
+    inputs:
+      force_sync:
+        description: 'Force sync even if no changes'
+        required: false
+        default: false
+        type: boolean
+
+# 동시 실행 방지
+concurrency:
+  group: "sync-main-to-dev"
+  cancel-in-progress: false
+
+jobs:
+  sync-branches:
+    name: Sync Main to Dev
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          # ADMIN_TOKEN 사용으로 branch protection 우회
+          token: ${{ secrets.ADMIN_TOKEN }}
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+
+      - name: Sync Main to Dev
+        run: |
+          echo "🔄 Starting main → dev synchronization..."
+          
+          # 최신 상태로 업데이트
+          git fetch origin
+          
+          # dev 브랜치로 전환
+          git checkout dev
+          git pull origin dev
+          
+          # main의 변경사항이 있는지 확인
+          if git merge-base --is-ancestor origin/main dev; then
+            echo "✅ Dev is already up to date with main"
+            if [ "${{ github.event.inputs.force_sync }}" != "true" ]; then
+              echo "No sync needed. Exiting."
+              exit 0
+            fi
+          fi
+          
+          # main의 변경사항을 dev에 병합
+          echo "📥 Merging main into dev..."
+          git merge origin/main --no-edit
+          
+          # 충돌이 발생한 경우 처리
+          if [ $? -ne 0 ]; then
+            echo "❌ Merge conflict detected!"
+            echo "Creating PR for manual conflict resolution..."
+            
+            # 충돌 해결을 위한 브랜치 생성
+            conflict_branch="sync/main-to-dev-$(date +%Y%m%d%H%M%S)"
+            git checkout -b $conflict_branch
+            git add .
+            git commit -m "conflict: main → dev 동기화 중 충돌 발생 - 수동 해결 필요"
+            git push origin $conflict_branch
+            
+            # PR 생성
+            gh pr create \
+              --base dev \
+              --head $conflict_branch \
+              --title "🔄 [자동] Main → Dev 동기화 (충돌 해결 필요)" \
+              --body "Main 브랜치의 변경사항을 dev에 동기화하는 중 충돌이 발생했습니다. 수동으로 충돌을 해결해주세요." \
+              --label "sync,conflict"
+            
+            exit 1
+          fi
+          
+          # 성공적으로 병합된 경우 push
+          echo "✅ Successfully merged main into dev"
+          git push origin dev
+          
+          echo "🎉 Synchronization completed!"
+
+      - name: Create Sync Summary
+        if: success()
+        run: |
+          echo "## 🔄 Branch Sync Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **Source**: main" >> $GITHUB_STEP_SUMMARY
+          echo "- **Target**: dev" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status**: ✅ Success" >> $GITHUB_STEP_SUMMARY
+          echo "- **Time**: $(date)" >> $GITHUB_STEP_SUMMARY
+
+      - name: Notify on Failure
+        if: failure()
+        run: |
+          echo "## ❌ Branch Sync Failed" >> $GITHUB_STEP_SUMMARY
+          echo "Main → Dev 동기화 중 문제가 발생했습니다." >> $GITHUB_STEP_SUMMARY
+          echo "수동으로 확인이 필요합니다." >> $GITHUB_STEP_SUMMARY 
