@@ -16,7 +16,16 @@
 - '.cursor/**'       # Cursor 설정
 ```
 
-### 2. **수동 스킵 (키워드)**
+### 2. **PR 라벨 스킵 (최우선)**
+PR에 다음 라벨이 있으면 배포가 스킵됩니다:
+
+- `skip-ci` - CI/CD 전체 스킵
+- `skip-deploy` - 배포만 스킵
+- `skip-build` - 빌드만 스킵
+- `docs-only` - 문서 작업만
+- `workflow-only` - 워크플로우 작업만
+
+### 3. **수동 스킵 (키워드)**
 PR 제목이나 본문에 다음 키워드를 포함하면 배포가 스킵됩니다:
 
 #### 🔧 CI/CD 스킵
@@ -37,6 +46,15 @@ PR 제목이나 본문에 다음 키워드를 포함하면 배포가 스킵됩�
 
 ### ✅ 배포 스킵되는 경우
 
+#### 1. **PR 라벨 사용 (권장)**
+```markdown
+# PR 생성 시 라벨 추가
+- skip-ci: CI/CD 전체 스킵
+- docs-only: 문서 작업만
+- workflow-only: 워크플로우 작업만
+```
+
+#### 2. **PR 제목 키워드**
 ```markdown
 # PR 제목 예시
 docs: API 문서 업데이트 [docs only]
@@ -44,6 +62,7 @@ fix: README 오타 수정 [skip ci]
 workflow: GitHub Actions 개선 [workflow only]
 ```
 
+#### 3. **PR 본문 키워드**
 ```markdown
 # PR 본문 예시
 이 PR은 문서만 수정합니다.
@@ -64,12 +83,16 @@ refactor: 코드 리팩토링
 
 스킵 조건에 해당하지만 배포가 필요한 경우:
 
-### 방법 1: 키워드 제거
+### 방법 1: 라벨 제거 (가장 간단)
+1. PR 페이지에서 스킵 라벨 제거
+2. 워크플로우가 자동으로 다시 실행됨
+
+### 방법 2: 키워드 제거
 1. PR 제목/본문에서 스킵 키워드 제거
 2. 새로운 커밋 추가
 3. 다시 머지
 
-### 방법 2: 수동 실행
+### 방법 3: 수동 실행
 1. GitHub Actions 탭으로 이동
 2. 해당 워크플로우 선택
 3. "Run workflow" 버튼 클릭
@@ -78,6 +101,15 @@ refactor: 코드 리팩토링
 
 ### 🎯 권장 사용 패턴
 
+#### 1. **PR 라벨 사용 (가장 효율적)**
+```bash
+# GitHub CLI로 라벨과 함께 PR 생성
+gh pr create --title "docs: API 가이드 추가" --label "docs-only"
+gh pr create --title "ci: 워크플로우 개선" --label "workflow-only"
+gh pr create --title "fix: README 수정" --label "skip-ci"
+```
+
+#### 2. **커밋 메시지 키워드**
 ```bash
 # 문서 작업
 git commit -m "docs: API 가이드 추가 [docs only]"
@@ -109,16 +141,18 @@ git commit -m "config: .gitignore 업데이트 [no deploy]"
 ```
 🚫 배포가 스킵되었습니다
 
-스킵 이유: PR 제목에 '[docs only]' 키워드 발견
+스킵 이유: PR 라벨에 'skip-ci' 발견
 
 스킵 조건:
+- PR 라벨에 스킵 라벨 포함 (최우선)
 - PR 제목/본문에 스킵 키워드 포함
 - 문서나 설정 파일만 변경 (paths-ignore)
 
 배포를 원하는 경우:
-1. PR 제목/본문에서 스킵 키워드 제거
-2. 새로운 커밋 추가 후 다시 머지
-3. 또는 수동으로 workflow_dispatch 실행
+1. PR 라벨에서 스킵 라벨 제거
+2. PR 제목/본문에서 스킵 키워드 제거
+3. 새로운 커밋 추가 후 다시 머지
+4. 또는 수동으로 workflow_dispatch 실행
 ```
 
 ## 🚨 주의사항

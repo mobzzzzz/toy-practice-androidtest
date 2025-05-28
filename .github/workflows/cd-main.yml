@@ -35,6 +35,9 @@ jobs:
           pr_title="${{ github.event.pull_request.title }}"
           pr_body="${{ github.event.pull_request.body }}"
           
+          # PR 라벨 확인
+          pr_labels='${{ toJson(github.event.pull_request.labels.*.name) }}'
+          
           # 스킵 키워드 목록 (실무에서 흔히 사용하는 패턴)
           skip_keywords=(
             "[skip ci]" "[ci skip]" "[no ci]" "[skip actions]" "[actions skip]"
@@ -44,17 +47,33 @@ jobs:
             "[skip build]" "[build skip]" "[no build]"
           )
           
+          # 스킵 라벨 목록
+          skip_labels=(
+            "skip-ci" "skip-deploy" "skip-build" "docs-only" "workflow-only"
+          )
+          
           should_skip="false"
           skip_reason=""
           
-          # PR 제목에서 스킵 키워드 확인
-          for keyword in "${skip_keywords[@]}"; do
-            if [[ "$pr_title" == *"$keyword"* ]]; then
+          # PR 라벨에서 스킵 라벨 확인 (최우선)
+          for label in "${skip_labels[@]}"; do
+            if echo "$pr_labels" | grep -q "\"$label\""; then
               should_skip="true"
-              skip_reason="PR 제목에 '$keyword' 키워드 발견"
+              skip_reason="PR 라벨에 '$label' 발견"
               break
             fi
           done
+          
+          # PR 제목에서 스킵 키워드 확인 (라벨에서 발견되지 않은 경우)
+          if [ "$should_skip" = "false" ]; then
+            for keyword in "${skip_keywords[@]}"; do
+              if [[ "$pr_title" == *"$keyword"* ]]; then
+                should_skip="true"
+                skip_reason="PR 제목에 '$keyword' 키워드 발견"
+                break
+              fi
+            done
+          fi
           
           # PR 본문에서 스킵 키워드 확인 (제목에서 발견되지 않은 경우)
           if [ "$should_skip" = "false" ]; then
@@ -72,7 +91,7 @@ jobs:
           
           if [ "$should_skip" = "true" ]; then
             echo "🚫 배포 스킵: $skip_reason"
-            echo "💡 배포를 원하는 경우 PR 제목/본문에서 스킵 키워드를 제거하고 다시 머지하세요."
+            echo "💡 배포를 원하는 경우 PR 제목/본문에서 스킵 키워드를 제거하거나 라벨을 제거하고 다시 머지하세요."
           else
             echo "✅ 배포 진행: 스킵 조건에 해당하지 않음"
           fi
@@ -245,10 +264,12 @@ jobs:
           echo "**스킵 이유:** ${{ needs.check-skip-deployment.outputs.skip_reason }}"
           echo ""
           echo "**스킵 조건:**"
+          echo "- PR 라벨에 스킵 라벨 포함 (최우선)"
           echo "- PR 제목/본문에 스킵 키워드 포함"
           echo "- 문서나 설정 파일만 변경 (paths-ignore)"
           echo ""
           echo "**배포를 원하는 경우:**"
-          echo "1. PR 제목/본문에서 스킵 키워드 제거"
-          echo "2. 새로운 커밋 추가 후 다시 머지"
-          echo "3. 또는 수동으로 workflow_dispatch 실행" 
+          echo "1. PR 라벨에서 스킵 라벨 제거"
+          echo "2. PR 제목/본문에서 스킵 키워드 제거"
+          echo "3. 새로운 커밋 추가 후 다시 머지"
+          echo "4. 또는 수동으로 workflow_dispatch 실행" 
