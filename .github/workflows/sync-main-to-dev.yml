@@ -1,11 +1,11 @@
 name: Sync Main to Dev
 
 on:
-  # main 브랜치에 push될 때만 (태그는 제외)
-  push:
-    branches: [main]
+  # 자동 실행 임시 비활성화 (이중 커밋 문제 해결을 위해)
+  # push:
+  #   branches: [main]
   
-  # 수동 실행도 가능하도록
+  # 수동 실행만 가능하도록 설정
   workflow_dispatch:
     inputs:
       force_sync:
@@ -13,6 +13,11 @@ on:
         required: false
         default: false
         type: boolean
+      sync_reason:
+        description: 'Reason for manual sync'
+        required: true
+        default: 'Manual sync requested'
+        type: string
 
 # 동시 실행 방지
 concurrency:
@@ -85,7 +90,7 @@ jobs:
         id: auto-sync
         run: |
           echo "🔄 main → dev 자동 동기화 시작..."
-          echo "📋 전략: 깔끔한 히스토리 유지 (불필요한 merge 커밋 방지)"
+          echo "�� 전략: 깔끔한 히스토리 유지 (불필요한 merge 커밋 방지)"
           
           # dev 브랜치로 전환
           git checkout dev
@@ -149,6 +154,9 @@ jobs:
           echo "- **타겟**: dev" >> $GITHUB_STEP_SUMMARY
           echo "- **이벤트**: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
           echo "- **참조**: ${{ github.ref }}" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "- **실행 이유**: ${{ github.event.inputs.sync_reason }}" >> $GITHUB_STEP_SUMMARY
+          fi
           
           if [ "${{ github.ref_type }}" == "tag" ]; then
             echo "- **상태**: ⏭️ 스킵됨 (태그 이벤트 - 중복 실행 방지)" >> $GITHUB_STEP_SUMMARY
