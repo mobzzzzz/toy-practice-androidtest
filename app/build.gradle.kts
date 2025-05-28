@@ -23,26 +23,58 @@ fun getVersionFromTag(): Triple<Int, Int, Int> {
         System.getenv("BETA_VERSION")?.let { betaVersion ->
             val version = betaVersion.split(".")
             return Triple(
-                version.getOrNull(0)?.toIntOrNull() ?: 1,
+                version.getOrNull(0)?.toIntOrNull() ?: 0,
                 version.getOrNull(1)?.toIntOrNull() ?: 0,
                 version.getOrNull(2)?.toIntOrNull() ?: 0,
             )
         }
 
+        // 현재 커밋의 정확한 태그를 찾기 위해 여러 방법 시도
         val stdout = ByteArrayOutputStream()
+
+        // 1. 현재 커밋에 정확히 일치하는 태그가 있는지 확인
+        try {
+            exec {
+                commandLine("git", "describe", "--exact-match", "--tags", "HEAD")
+                standardOutput = stdout
+            }
+            val tag = stdout.toString().trim()
+            if (tag.isNotEmpty()) {
+                val version = tag.removePrefix("v").split(".")
+                return Triple(
+                    version.getOrNull(0)?.toIntOrNull() ?: 0,
+                    version.getOrNull(1)?.toIntOrNull() ?: 0,
+                    version.getOrNull(2)?.toIntOrNull() ?: 0,
+                )
+            }
+        } catch (e: Exception) {
+            // 정확한 태그가 없으면 다음 방법 시도
+        }
+
+        // 2. 가장 최근 태그 찾기 (beta 제외)
+        stdout.reset()
         exec {
-            commandLine("git", "describe", "--tags", "--abbrev=0")
+            commandLine("git", "tag", "-l", "v*", "--sort=-version:refname")
             standardOutput = stdout
         }
-        val tag = stdout.toString().trim()
-        val version = tag.removePrefix("v").split(".")
-        return Triple(
-            version.getOrNull(0)?.toIntOrNull() ?: 1,
-            version.getOrNull(1)?.toIntOrNull() ?: 0,
-            version.getOrNull(2)?.toIntOrNull() ?: 0,
-        )
+        val tags = stdout.toString().trim().split("\n")
+        val latestReleaseTag = tags.firstOrNull { !it.contains("beta") && it.startsWith("v") && it.trim().isNotEmpty() }
+
+        if (latestReleaseTag != null) {
+            val version = latestReleaseTag.removePrefix("v").split(".")
+            return Triple(
+                version.getOrNull(0)?.toIntOrNull() ?: 0,
+                version.getOrNull(1)?.toIntOrNull() ?: 0,
+                version.getOrNull(2)?.toIntOrNull() ?: 0,
+            )
+        }
+
+        // 3. 신규 프로젝트 기본값 (출시 전 상태)
+        println("No release tags found. Using default version 0.0.0 for new project.")
+        return Triple(0, 0, 0)
     } catch (e: Exception) {
-        return Triple(1, 0, 0)
+        println("Error getting version from tag: ${e.message}. Using default version 0.0.0.")
+        return Triple(0, 0, 0)
     }
 }
 

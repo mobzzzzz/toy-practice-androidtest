@@ -42,6 +42,7 @@ jobs:
       branch_ref: ${{ github.event.pull_request.merge_commit_sha }}
       artifact_name: beta-build
       timestamp: ${{ needs.generate-timestamp.outputs.timestamp }}
+      version_code: ${{ vars.VERSION_CODE }}
 
   # 버전 관리 및 베타 태그 생성
   version-management:
@@ -78,9 +79,10 @@ jobs:
           # PR 브랜치 이름에서 타입 추출
           branch_name="${{ github.head_ref }}"
           
-          # 기본값 설정
+          # 신규 프로젝트 또는 태그가 없는 경우 기본값 설정 (출시 전 상태)
           if [ -z "$latest_release" ]; then
-            major=1
+            echo "No release tags found. Starting with version 0.0.0 for new project."
+            major=0
             minor=0
             patch=0
           else
@@ -119,6 +121,20 @@ jobs:
             fi
           fi
           
+          # 신규 프로젝트에서 첫 번째 개발 시 버전 처리
+          if [ "$major" -eq 0 ] && [ "$minor" -eq 0 ] && [ "$patch" -eq 0 ]; then
+            if [[ "$branch_name" =~ ^feat/ ]]; then
+              # 첫 번째 기능 개발: 0.1.0
+              minor=1
+              patch=0
+              echo "First feature development: v0.1.0"
+            else
+              # 첫 번째 수정/개선: 0.0.1
+              patch=1
+              echo "First fix/improvement: v0.0.1"
+            fi
+          fi
+          
           next_version="$major.$minor.$patch"
           
           # 이전 베타 태그 찾기 (같은 버전의 가장 최신 베타)
@@ -126,6 +142,13 @@ jobs:
           
           # 새로운 베타 태그 생성 (현재 version code 사용)
           current_version_code="${{ vars.VERSION_CODE }}"
+          
+          # VERSION_CODE가 설정되지 않은 신규 프로젝트의 경우 기본값 사용
+          if [ -z "$current_version_code" ] || [ "$current_version_code" = "0" ]; then
+            current_version_code=1
+            echo "No VERSION_CODE found. Using default value: 1"
+          fi
+          
           beta_tag="v$next_version-beta.${{ needs.generate-timestamp.outputs.timestamp }}"
           echo "tag=$beta_tag" >> $GITHUB_OUTPUT
           echo "version=$next_version" >> $GITHUB_OUTPUT
@@ -138,7 +161,7 @@ jobs:
             echo "이전 베타 태그 발견: $previous_beta (릴리즈 작업에서 삭제 예정)"
           fi
           
-          echo "Creating beta tag: $beta_tag (version code: $current_version_code, based on $latest_release)"
+          echo "Creating beta tag: $beta_tag (version code: $current_version_code, based on ${latest_release:-'new project'})"
           git tag -a "$beta_tag" -m "Beta release $beta_tag (version code: $current_version_code)"
           git push origin "$beta_tag"
 
