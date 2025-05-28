@@ -1,16 +1,10 @@
-name: 🔄 GitFlow 자동 동기화
+name: GitFlow 자동 동기화
 
 on:
   push:
     branches:
       - main
       - 'release/**'
-    paths-ignore:
-      - '.github/workflows/**'
-      - 'docs/**'
-      - '*.md'
-      - '.cursorrules'
-      - '.cursor/**'
   pull_request:
     types: [closed]
     branches:
@@ -131,7 +125,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.ADMIN_TOKEN }}
 
       - name: ⚙️ Git 설정
         run: |
