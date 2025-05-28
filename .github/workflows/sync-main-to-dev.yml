@@ -110,8 +110,14 @@ jobs:
           else
             echo "⚠️ Fast-forward 불가능 - dev에 $dev_commits개의 독립적인 커밋 존재"
             echo "🔀 일반 병합 시도 (merge 커밋 생성됨)"
-            # 일반 merge 시도 (충돌 가능성 있음)
-            if git merge origin/main --no-edit; then
+            # 일반 merge 시도 (충돌 가능성 있음) - 커밋 컨벤션 적용
+            if git merge origin/main --no-ff -m "sync: merge main into dev
+
+            - 자동 동기화를 통해 main 브랜치의 최신 변경사항을 dev에 반영
+            - 병합 방식: 일반 병합 (dev에 독립적인 커밋 존재)
+            - dev 독립 커밋: $dev_commits개
+            - 트리거: ${{ github.event_name }} (${{ github.ref }})
+            - 시간: $(date '+%Y-%m-%d %H:%M:%S KST')"; then
               echo "✅ 일반 병합 성공"
               git push origin dev
               echo "🎉 동기화 완료!"
