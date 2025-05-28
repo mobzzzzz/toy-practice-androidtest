@@ -19,6 +19,10 @@ on:
         description: 'Build timestamp'
         required: true
         type: string
+      version_code:
+        description: 'Version code to use for build'
+        required: false
+        type: string
     outputs:
       artifact_name:
         description: 'Name of the uploaded artifact'
@@ -56,7 +60,7 @@ jobs:
       - name: Build Debug APK
         if: inputs.build_type == 'debug'
         env:
-          VERSION_CODE: ${{ vars.VERSION_CODE }}
+          VERSION_CODE: ${{ inputs.version_code || vars.VERSION_CODE }}
           BUILD_TIMESTAMP: ${{ inputs.timestamp }}
         run: |
           echo "Building debug APK with version code: $VERSION_CODE"
@@ -65,7 +69,7 @@ jobs:
       - name: Build Release APK
         if: inputs.build_type == 'release'
         env:
-          VERSION_CODE: ${{ vars.VERSION_CODE }}
+          VERSION_CODE: ${{ inputs.version_code || vars.VERSION_CODE }}
           BUILD_TIMESTAMP: ${{ inputs.timestamp }}
         run: |
           echo "Building release APK with version code: $VERSION_CODE"
