@@ -27,13 +27,11 @@ jobs:
     if: github.ref_type != 'tag'
     permissions:
       contents: write
-      pull-requests: write
     
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
         with:
-          # ADMIN_TOKEN 사용으로 branch protection 우회
           token: ${{ secrets.ADMIN_TOKEN }}
           fetch-depth: 0
 
@@ -94,75 +92,15 @@ jobs:
             
             # 충돌 상태 정리
             git merge --abort
+            
+            # 충돌 파일들 확인
+            git checkout dev
+            git merge origin/main --no-commit --no-ff || true
+            conflict_files=$(git diff --name-only --diff-filter=U 2>/dev/null || echo "알 수 없음")
+            git merge --abort 2>/dev/null || true
+            
+            echo "conflict_files=$conflict_files" >> $GITHUB_OUTPUT
           fi
-
-      - name: Create conflict resolution PR
-        if: steps.check-sync.outputs.sync_needed == 'true' && steps.auto-sync.outputs.sync_success == 'false'
-        env:
-          GH_TOKEN: ${{ secrets.ADMIN_TOKEN }}
-        run: |
-          echo "🔧 충돌 해결 PR 생성 중..."
-          
-          # 충돌 해결을 위한 브랜치 생성
-          conflict_branch="sync/main-to-dev-$(date +%Y%m%d%H%M%S)"
-          git checkout -b $conflict_branch origin/dev
-          
-          # main의 변경사항을 병합하되 충돌 상태로 유지
-          git merge origin/main --no-edit || true
-          
-          # 충돌 파일들 확인
-          conflict_files=$(git status --porcelain | grep "^UU\|^AA\|^DD" | cut -c4- || echo "")
-          
-          # 충돌 상태 그대로 커밋
-          git add .
-          git commit -m "conflict: main → dev 동기화 중 충돌 발생 - 수동 해결 필요
-
-          트리거: ${{ github.event_name }} (${{ github.ref }})
-          
-          충돌 파일들:
-          $conflict_files
-          
-          해결 후 이 PR을 dev 브랜치로 병합해주세요."
-          
-          git push origin $conflict_branch
-          
-          # PR 생성
-          cat > pr_body.md << EOF
-          ## 🔄 Main → Dev 동기화 충돌 해결 필요
-          
-          **트리거 이벤트**: ${{ github.event_name }} (${{ github.ref }})
-          
-          다음 파일들에서 충돌이 발생했습니다:
-          
-          EOF
-          
-          if [ -n "$conflict_files" ]; then
-            echo "$conflict_files" | while read file; do
-              echo "- \`$file\`" >> pr_body.md
-            done
-          else
-            echo "- 충돌 파일 목록을 확인할 수 없습니다" >> pr_body.md
-          fi
-          
-          cat >> pr_body.md << EOF
-          
-          ### 해결 방법:
-          1. 각 충돌 파일을 열어서 충돌 마커를 확인하세요
-          2. 적절한 변경사항을 선택하거나 병합하세요  
-          3. \`git add <파일명>\`으로 해결된 파일을 추가하세요
-          4. \`git commit\`으로 병합을 완료하세요
-          5. 이 PR을 dev 브랜치로 병합하세요
-          EOF
-          
-          gh pr create \
-            --base dev \
-            --head $conflict_branch \
-            --title "🔄 [자동] Main → Dev 동기화 (충돌 해결 필요)" \
-            --body-file pr_body.md \
-            --label "sync,conflict,hotfix"
-          
-          echo "📋 충돌 해결 PR이 생성되었습니다."
-          rm -f pr_body.md
 
       - name: Create summary
         if: always()
@@ -180,7 +118,15 @@ jobs:
           elif [ "${{ steps.auto-sync.outputs.sync_success }}" == "true" ]; then
             echo "- **상태**: ✅ 자동 동기화 성공" >> $GITHUB_STEP_SUMMARY
           elif [ "${{ steps.auto-sync.outputs.sync_success }}" == "false" ]; then
-            echo "- **상태**: ⚠️ 충돌 감지 - 수동 해결 PR 생성됨" >> $GITHUB_STEP_SUMMARY
+            echo "- **상태**: ⚠️ 충돌 감지 - 수동 동기화 필요" >> $GITHUB_STEP_SUMMARY
+            echo "- **충돌 파일**: ${{ steps.auto-sync.outputs.conflict_files }}" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### 📋 수동 해결 방법:" >> $GITHUB_STEP_SUMMARY
+            echo "1. 로컬에서 \`git checkout dev\` 실행" >> $GITHUB_STEP_SUMMARY
+            echo "2. \`git merge main\` 실행하여 충돌 확인" >> $GITHUB_STEP_SUMMARY
+            echo "3. 충돌 파일들을 수동으로 해결" >> $GITHUB_STEP_SUMMARY
+            echo "4. \`git add .\` 및 \`git commit\` 실행" >> $GITHUB_STEP_SUMMARY
+            echo "5. \`git push origin dev\` 실행" >> $GITHUB_STEP_SUMMARY
           else
             echo "- **상태**: ❌ 동기화 실패" >> $GITHUB_STEP_SUMMARY
           fi
