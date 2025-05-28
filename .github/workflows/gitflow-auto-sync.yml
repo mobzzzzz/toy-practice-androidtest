@@ -1,4 +1,4 @@
-name: 🔄 GitFlow 자동 동기화
+name: GitFlow 자동 동기화
 
 on:
   push:
@@ -24,7 +24,7 @@ on:
 
 jobs:
   detect-gitflow-changes:
-    name: 🔍 GitFlow 변경사항 감지
+    name: GitFlow 변경사항 감지
     runs-on: ubuntu-latest
     outputs:
       should_sync: ${{ steps.detect.outputs.should_sync }}
@@ -32,13 +32,13 @@ jobs:
       source_branch: ${{ steps.detect.outputs.source_branch }}
       sync_reason: ${{ steps.detect.outputs.sync_reason }}
     steps:
-      - name: 📥 코드 체크아웃
+      - name: 코드 체크아웃
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 🔍 GitFlow 변경사항 감지
+      - name: GitFlow 변경사항 감지
         id: detect
         run: |
           echo "🔍 GitFlow 변경사항을 감지합니다..."
@@ -122,23 +122,23 @@ jobs:
           echo "  - 동기화 이유: $sync_reason"
 
   sync-to-dev:
-    name: 🔄 Dev 브랜치 동기화
+    name: Dev 브랜치 동기화
     runs-on: ubuntu-latest
     needs: detect-gitflow-changes
     if: needs.detect-gitflow-changes.outputs.should_sync == 'true'
     steps:
-      - name: 📥 코드 체크아웃
+      - name: 코드 체크아웃
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.ADMIN_TOKEN }}
 
-      - name: ⚙️ Git 설정
+      - name: Git 설정
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: 🔄 Dev 브랜치 동기화
+      - name: Dev 브랜치 동기화
         run: |
           echo "🔄 GitFlow 자동 동기화를 시작합니다..."
           echo "📋 동기화 정보:"
@@ -235,13 +235,13 @@ jobs:
           
           echo "✅ 동기화가 완료되었습니다! ($merge_result)"
 
-      - name: 📤 Dev 브랜치 푸시
+      - name: Dev 브랜치 푸시
         run: |
           echo "📤 dev 브랜치를 원격 저장소에 푸시합니다..."
           git push origin dev
           echo "✅ 푸시가 완료되었습니다!"
 
-      - name: 📊 동기화 결과 알림
+      - name: 동기화 결과 알림
         run: |
           echo "🎉 GitFlow 자동 동기화가 성공적으로 완료되었습니다!"
           echo ""
