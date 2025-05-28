@@ -23,7 +23,7 @@ fun getVersionFromTag(): Triple<Int, Int, Int> {
         System.getenv("BETA_VERSION")?.let { betaVersion ->
             val version = betaVersion.split(".")
             return Triple(
-                version.getOrNull(0)?.toIntOrNull() ?: 1,
+                version.getOrNull(0)?.toIntOrNull() ?: 0,
                 version.getOrNull(1)?.toIntOrNull() ?: 0,
                 version.getOrNull(2)?.toIntOrNull() ?: 0,
             )
@@ -42,7 +42,7 @@ fun getVersionFromTag(): Triple<Int, Int, Int> {
             if (tag.isNotEmpty()) {
                 val version = tag.removePrefix("v").split(".")
                 return Triple(
-                    version.getOrNull(0)?.toIntOrNull() ?: 1,
+                    version.getOrNull(0)?.toIntOrNull() ?: 0,
                     version.getOrNull(1)?.toIntOrNull() ?: 0,
                     version.getOrNull(2)?.toIntOrNull() ?: 0,
                 )
@@ -58,21 +58,23 @@ fun getVersionFromTag(): Triple<Int, Int, Int> {
             standardOutput = stdout
         }
         val tags = stdout.toString().trim().split("\n")
-        val latestReleaseTag = tags.firstOrNull { !it.contains("beta") && it.startsWith("v") }
+        val latestReleaseTag = tags.firstOrNull { !it.contains("beta") && it.startsWith("v") && it.trim().isNotEmpty() }
 
         if (latestReleaseTag != null) {
             val version = latestReleaseTag.removePrefix("v").split(".")
             return Triple(
-                version.getOrNull(0)?.toIntOrNull() ?: 1,
+                version.getOrNull(0)?.toIntOrNull() ?: 0,
                 version.getOrNull(1)?.toIntOrNull() ?: 0,
                 version.getOrNull(2)?.toIntOrNull() ?: 0,
             )
         }
 
-        // 3. 기본값
-        return Triple(1, 0, 0)
+        // 3. 신규 프로젝트 기본값 (출시 전 상태)
+        println("No release tags found. Using default version 0.0.0 for new project.")
+        return Triple(0, 0, 0)
     } catch (e: Exception) {
-        return Triple(1, 0, 0)
+        println("Error getting version from tag: ${e.message}. Using default version 0.0.0.")
+        return Triple(0, 0, 0)
     }
 }
 
