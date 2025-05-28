@@ -113,7 +113,6 @@ jobs:
       artifact_name: release-build
       timestamp: ${{ needs.generate-timestamp.outputs.timestamp }}
       version_code: ${{ needs.create-release-tag.outputs.new_version_code }}
-
   # 정식 릴리즈 생성
   create-production-release:
     name: Create Production Release
