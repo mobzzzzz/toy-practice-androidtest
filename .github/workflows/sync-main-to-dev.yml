@@ -85,18 +85,49 @@ jobs:
           # dev 브랜치로 전환
           git checkout -b temp-sync-branch origin/dev
           
+          # 안전성 검사: dev에만 있는 커밋 수 확인
+          dev_only_commits=$(git rev-list --count origin/main..origin/dev)
+          main_only_commits=$(git rev-list --count origin/dev..origin/main)
+          
+          echo "📊 Sync Analysis:"
+          echo "  - Dev-only commits: $dev_only_commits"
+          echo "  - Main-only commits: $main_only_commits"
+          
+          # 안전한 자동 동기화 조건
+          safe_auto_sync=false
+          
+          if [ "$dev_only_commits" -eq 0 ]; then
+            echo "✅ Safe: Dev has no unique commits - can safely fast-forward"
+            safe_auto_sync=true
+          elif [ "$main_only_commits" -le 3 ] && [ "$dev_only_commits" -le 5 ]; then
+            echo "⚠️  Moderate risk: Small changes on both sides - attempting automatic merge"
+            safe_auto_sync=true
+          else
+            echo "🚨 High risk: Significant divergence detected"
+            echo "   - Consider manual review for safety"
+            safe_auto_sync=false
+          fi
+          
+          echo "auto_sync_decision=$safe_auto_sync" >> $GITHUB_OUTPUT
+          
           # main의 변경사항을 임시 브랜치에 병합 시도
           echo "📥 Attempting to merge main into temp branch..."
           if git merge origin/main --no-edit; then
             echo "✅ Automatic merge successful"
             echo "merge_success=true" >> $GITHUB_OUTPUT
             
-            # dev 브랜치로 전환하고 fast-forward
-            git checkout dev || git checkout -b dev origin/dev
-            git merge temp-sync-branch --ff-only
-            git push origin dev
-            
-            echo "🎉 Synchronization completed successfully!"
+            if [ "$safe_auto_sync" = "true" ]; then
+              # 안전한 경우: 자동 동기화 진행
+              echo "🚀 Proceeding with automatic sync (main priority)"
+              git checkout dev || git checkout -b dev origin/dev
+              git merge temp-sync-branch --ff-only
+              git push origin dev
+              echo "🎉 Synchronization completed successfully!"
+            else
+              # 위험한 경우: PR 생성으로 수동 검토 요청
+              echo "⚠️  Creating PR for manual review due to high risk"
+              echo "merge_success=false" >> $GITHUB_OUTPUT
+            fi
           else
             echo "❌ Automatic merge failed due to conflicts"
             echo "merge_success=false" >> $GITHUB_OUTPUT
@@ -172,7 +203,11 @@ jobs:
           elif [ "${{ steps.check-sync.outputs.sync_needed }}" == "false" ]; then
             echo "- **Status**: ✅ Already up to date" >> $GITHUB_STEP_SUMMARY
           elif [ "${{ steps.auto-sync.outputs.merge_success }}" == "true" ]; then
-            echo "- **Status**: ✅ Automatic sync successful" >> $GITHUB_STEP_SUMMARY
+            if [ "${{ steps.auto-sync.outputs.auto_sync_decision }}" == "true" ]; then
+              echo "- **Status**: ✅ Automatic sync successful (safe conditions met)" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "- **Status**: ⚠️ Merge possible but PR created for safety review" >> $GITHUB_STEP_SUMMARY
+            fi
           elif [ "${{ steps.auto-sync.outputs.merge_success }}" == "false" ]; then
             echo "- **Status**: ⚠️ Conflicts detected - PR created for manual resolution" >> $GITHUB_STEP_SUMMARY
           else
