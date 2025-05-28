@@ -4,6 +4,14 @@ on:
   pull_request_target:
     types: [closed]
     branches: ["main"]
+    # 문서나 워크플로우 변경만 있는 경우 배포 스킵
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+      - 'README*'
+      - '.gitignore'
+      - '.editorconfig'
+      - '.cursor/**'
 
 # main 브랜치 배포 작업은 순차적으로 실행 (여러 PR 동시 머지 시 대기열 처리)
 concurrency:
@@ -11,10 +19,20 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # 배포 스킵 여부 확인
+  check-skip-deployment:
+    name: Check Skip Deployment
+    if: github.event.pull_request.merged == true
+    uses: ./.github/workflows/check-skip-deployment.yml
+    with:
+      pr_title: ${{ github.event.pull_request.title }}
+      pr_labels: ${{ toJson(github.event.pull_request.labels.*.name) }}
+
   # GitHub 설정 검증
   validate-config:
     name: Validate Configuration
-    if: github.event.pull_request.merged == true
+    if: github.event.pull_request.merged == true && needs.check-skip-deployment.outputs.should_skip != 'true'
+    needs: [check-skip-deployment]
     uses: ./.github/workflows/validate-github-config.yml
     secrets: inherit
 
@@ -22,7 +40,8 @@ jobs:
   update-version-code:
     name: Update Version Code
     runs-on: ubuntu-latest
-    needs: [validate-config]
+    needs: [validate-config, check-skip-deployment]
+    if: needs.check-skip-deployment.outputs.should_skip != 'true'
     permissions:
       contents: write
       actions: write
@@ -54,7 +73,8 @@ jobs:
   generate-timestamp:
     name: Generate Timestamp
     runs-on: ubuntu-latest
-    needs: [update-version-code]
+    needs: [update-version-code, check-skip-deployment]
+    if: needs.check-skip-deployment.outputs.should_skip != 'true'
     outputs:
       timestamp: ${{ steps.set-timestamp.outputs.value }}
     steps:
@@ -68,7 +88,8 @@ jobs:
   create-release-tag:
     name: Create Release Tag
     runs-on: ubuntu-latest
-    needs: [update-version-code, generate-timestamp]
+    needs: [update-version-code, generate-timestamp, check-skip-deployment]
+    if: needs.check-skip-deployment.outputs.should_skip != 'true'
     permissions:
       contents: write
       actions: write
@@ -137,7 +158,8 @@ jobs:
   # APK 빌드 (릴리즈 태그 생성 후)
   build-apk:
     name: Build Release APK
-    needs: [create-release-tag, generate-timestamp]
+    needs: [create-release-tag, generate-timestamp, check-skip-deployment]
+    if: needs.check-skip-deployment.outputs.should_skip != 'true'
     uses: ./.github/workflows/build-apk.yml
     with:
       build_type: release
@@ -149,7 +171,8 @@ jobs:
   # 정식 릴리즈 생성
   create-production-release:
     name: Create Production Release
-    needs: [build-apk, create-release-tag]
+    needs: [build-apk, create-release-tag, check-skip-deployment]
+    if: needs.check-skip-deployment.outputs.should_skip != 'true'
     uses: ./.github/workflows/create-release.yml
     with:
       release_type: release
@@ -157,4 +180,26 @@ jobs:
       artifact_name: ${{ needs.build-apk.outputs.artifact_name }}
       version_code: ${{ needs.create-release-tag.outputs.new_version_code }}
     secrets:
-      ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }} 
+      ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+
+  # 배포 스킵 알림
+  deployment-skipped:
+    name: Deployment Skipped
+    runs-on: ubuntu-latest
+    needs: [check-skip-deployment]
+    if: github.event.pull_request.merged == true && needs.check-skip-deployment.outputs.should_skip == 'true'
+    steps:
+      - name: Skip Notification
+        run: |
+          echo "🚫 **배포가 스킵되었습니다**"
+          echo ""
+          echo "**스킵 이유:** ${{ needs.check-skip-deployment.outputs.skip_reason }}"
+          echo ""
+          echo "**스킵 조건:**"
+          echo "- PR 라벨에 'skip-ci' 포함"
+          echo "- PR 제목에 '[skip ci]' 키워드 포함"
+          echo ""
+          echo "**배포를 원하는 경우:**"
+          echo "1. PR 라벨에서 'skip-ci' 제거"
+          echo "2. PR 제목에서 '[skip ci]' 제거"
+          echo "3. 새로운 커밋 추가 후 다시 머지" 

@@ -1,0 +1,55 @@
+name: Check Skip Deployment
+
+on:
+  workflow_call:
+    inputs:
+      pr_title:
+        required: true
+        type: string
+      pr_labels:
+        required: true
+        type: string
+    outputs:
+      should_skip:
+        description: "배포를 스킵해야 하는지 여부"
+        value: ${{ jobs.check-skip.outputs.should_skip }}
+      skip_reason:
+        description: "스킵 이유"
+        value: ${{ jobs.check-skip.outputs.skip_reason }}
+
+jobs:
+  check-skip:
+    name: Check Skip Conditions
+    runs-on: ubuntu-latest
+    outputs:
+      should_skip: ${{ steps.check-skip.outputs.should_skip }}
+      skip_reason: ${{ steps.check-skip.outputs.skip_reason }}
+    steps:
+      - name: Check Skip Conditions
+        id: check-skip
+        run: |
+          pr_title="${{ inputs.pr_title }}"
+          pr_labels='${{ inputs.pr_labels }}'
+          
+          should_skip="false"
+          skip_reason=""
+          
+          # 1. PR 라벨에서 skip-ci 확인 (최우선)
+          if echo "$pr_labels" | grep -q '"skip-ci"'; then
+            should_skip="true"
+            skip_reason="PR 라벨에 'skip-ci' 발견"
+          # 2. 커밋 메시지에서 [skip ci] 확인
+          elif [[ "$pr_title" == *"[skip ci]"* ]]; then
+            should_skip="true"
+            skip_reason="PR 제목에 '[skip ci]' 키워드 발견"
+          fi
+          
+          echo "should_skip=$should_skip" >> $GITHUB_OUTPUT
+          echo "skip_reason=$skip_reason" >> $GITHUB_OUTPUT
+          
+          if [ "$should_skip" = "true" ]; then
+            echo "🚫 배포 스킵: $skip_reason"
+            echo "💡 배포를 원하는 경우 PR 라벨에서 'skip-ci'를 제거하거나 제목에서 '[skip ci]'를 제거하세요."
+          else
+            echo "✅ 배포 진행: 스킵 조건에 해당하지 않음"
+          fi 
