@@ -4,14 +4,6 @@ on:
   pull_request_target:
     types: [closed]
     branches: ["dev"]
-    # 문서나 워크플로우 변경만 있는 경우 배포 스킵
-    paths-ignore:
-      - 'docs/**'
-      - '*.md'
-      - 'README*'
-      - '.gitignore'
-      - '.editorconfig'
-      - '.cursor/**'
 
 # dev 브랜치 배포 작업은 순차적으로 실행 (여러 PR 동시 머지 시 대기열 처리)
 concurrency:
@@ -22,79 +14,11 @@ jobs:
   # 배포 스킵 여부 확인
   check-skip-deployment:
     name: Check Skip Deployment
-    runs-on: ubuntu-latest
     if: github.event.pull_request.merged == true
-    outputs:
-      should_skip: ${{ steps.check-skip.outputs.should_skip }}
-      skip_reason: ${{ steps.check-skip.outputs.skip_reason }}
-    steps:
-      - name: Check Skip Conditions
-        id: check-skip
-        run: |
-          # PR 제목과 커밋 메시지에서 스킵 키워드 확인
-          pr_title="${{ github.event.pull_request.title }}"
-          pr_body="${{ github.event.pull_request.body }}"
-          
-          # PR 라벨 확인
-          pr_labels='${{ toJson(github.event.pull_request.labels.*.name) }}'
-          
-          # 스킵 키워드 목록 (실무에서 흔히 사용하는 패턴)
-          skip_keywords=(
-            "[skip ci]" "[ci skip]" "[no ci]" "[skip actions]" "[actions skip]"
-            "[skip deploy]" "[deploy skip]" "[no deploy]" 
-            "[docs only]" "[docs]" "[documentation]"
-            "[workflow only]" "[workflow]" "[ci only]"
-            "[skip build]" "[build skip]" "[no build]"
-          )
-          
-          # 스킵 라벨 목록
-          skip_labels=(
-            "skip-ci" "skip-deploy" "skip-build" "docs-only" "workflow-only"
-          )
-          
-          should_skip="false"
-          skip_reason=""
-          
-          # PR 라벨에서 스킵 라벨 확인 (최우선)
-          for label in "${skip_labels[@]}"; do
-            if echo "$pr_labels" | grep -q "\"$label\""; then
-              should_skip="true"
-              skip_reason="PR 라벨에 '$label' 발견"
-              break
-            fi
-          done
-          
-          # PR 제목에서 스킵 키워드 확인 (라벨에서 발견되지 않은 경우)
-          if [ "$should_skip" = "false" ]; then
-            for keyword in "${skip_keywords[@]}"; do
-              if [[ "$pr_title" == *"$keyword"* ]]; then
-                should_skip="true"
-                skip_reason="PR 제목에 '$keyword' 키워드 발견"
-                break
-              fi
-            done
-          fi
-          
-          # PR 본문에서 스킵 키워드 확인 (제목에서 발견되지 않은 경우)
-          if [ "$should_skip" = "false" ]; then
-            for keyword in "${skip_keywords[@]}"; do
-              if [[ "$pr_body" == *"$keyword"* ]]; then
-                should_skip="true"
-                skip_reason="PR 본문에 '$keyword' 키워드 발견"
-                break
-              fi
-            done
-          fi
-          
-          echo "should_skip=$should_skip" >> $GITHUB_OUTPUT
-          echo "skip_reason=$skip_reason" >> $GITHUB_OUTPUT
-          
-          if [ "$should_skip" = "true" ]; then
-            echo "🚫 배포 스킵: $skip_reason"
-            echo "💡 배포를 원하는 경우 PR 제목/본문에서 스킵 키워드를 제거하거나 라벨을 제거하고 다시 머지하세요."
-          else
-            echo "✅ 배포 진행: 스킵 조건에 해당하지 않음"
-          fi
+    uses: ./.github/workflows/check-skip-deployment.yml
+    with:
+      pr_title: ${{ github.event.pull_request.title }}
+      pr_labels: ${{ toJson(github.event.pull_request.labels.*.name) }}
 
   # GitHub 설정 검증
   validate-config:
@@ -284,12 +208,10 @@ jobs:
           echo "**스킵 이유:** ${{ needs.check-skip-deployment.outputs.skip_reason }}"
           echo ""
           echo "**스킵 조건:**"
-          echo "- PR 라벨에 스킵 라벨 포함 (최우선)"
-          echo "- PR 제목/본문에 스킵 키워드 포함"
-          echo "- 문서나 설정 파일만 변경 (paths-ignore)"
+          echo "- PR 라벨에 'skip-ci' 포함"
+          echo "- PR 제목에 '[skip ci]' 키워드 포함"
           echo ""
           echo "**배포를 원하는 경우:**"
-          echo "1. PR 라벨에서 스킵 라벨 제거"
-          echo "2. PR 제목/본문에서 스킵 키워드 제거"
-          echo "3. 새로운 커밋 추가 후 다시 머지"
-          echo "4. 또는 수동으로 workflow_dispatch 실행" 
+          echo "1. PR 라벨에서 'skip-ci' 제거"
+          echo "2. PR 제목에서 '[skip ci]' 제거"
+          echo "3. 새로운 커밋 추가 후 다시 머지" 

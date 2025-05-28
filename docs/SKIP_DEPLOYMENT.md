@@ -4,43 +4,11 @@
 
 ## 📋 스킵 조건
 
-### 1. **자동 스킵 (paths-ignore)**
-다음 파일들만 변경된 경우 자동으로 배포가 스킵됩니다:
+### 1. **PR 라벨 스킵 (최우선)**
+PR에 `skip-ci` 라벨이 있으면 배포가 스킵됩니다.
 
-```yaml
-- 'docs/**'          # 문서 폴더
-- '*.md'             # 마크다운 파일
-- 'README*'          # README 파일들
-- '.gitignore'       # Git 설정
-- '.editorconfig'    # 에디터 설정
-- '.cursor/**'       # Cursor 설정
-```
-
-### 2. **PR 라벨 스킵 (최우선)**
-PR에 다음 라벨이 있으면 배포가 스킵됩니다:
-
-- `skip-ci` - CI/CD 전체 스킵
-- `skip-deploy` - 배포만 스킵
-- `skip-build` - 빌드만 스킵
-- `docs-only` - 문서 작업만
-- `workflow-only` - 워크플로우 작업만
-
-### 3. **수동 스킵 (키워드)**
-PR 제목이나 본문에 다음 키워드를 포함하면 배포가 스킵됩니다:
-
-#### 🔧 CI/CD 스킵
-- `[skip ci]` `[ci skip]` `[no ci]`
-- `[skip actions]` `[actions skip]`
-
-#### 🚀 배포 스킵
-- `[skip deploy]` `[deploy skip]` `[no deploy]`
-- `[skip build]` `[build skip]` `[no build]`
-
-#### 📚 문서 작업
-- `[docs only]` `[docs]` `[documentation]`
-
-#### ⚙️ 워크플로우 작업
-- `[workflow only]` `[workflow]` `[ci only]`
+### 2. **커밋 메시지 키워드**
+PR 제목에 `[skip ci]` 키워드를 포함하면 배포가 스킵됩니다.
 
 ## 💡 사용 예시
 
@@ -48,26 +16,16 @@ PR 제목이나 본문에 다음 키워드를 포함하면 배포가 스킵됩�
 
 #### 1. **PR 라벨 사용 (권장)**
 ```markdown
-# PR 생성 시 라벨 추가
-- skip-ci: CI/CD 전체 스킵
-- docs-only: 문서 작업만
-- workflow-only: 워크플로우 작업만
+# PR 생성 시 skip-ci 라벨 추가
+gh pr create --title "docs: API 가이드 추가" --label "skip-ci"
 ```
 
 #### 2. **PR 제목 키워드**
 ```markdown
 # PR 제목 예시
-docs: API 문서 업데이트 [docs only]
+docs: API 문서 업데이트 [skip ci]
 fix: README 오타 수정 [skip ci]
-workflow: GitHub Actions 개선 [workflow only]
-```
-
-#### 3. **PR 본문 키워드**
-```markdown
-# PR 본문 예시
-이 PR은 문서만 수정합니다.
-
-[skip deploy] - 배포 불필요
+workflow: GitHub Actions 개선 [skip ci]
 ```
 
 ### ❌ 배포 진행되는 경우
@@ -84,11 +42,11 @@ refactor: 코드 리팩토링
 스킵 조건에 해당하지만 배포가 필요한 경우:
 
 ### 방법 1: 라벨 제거 (가장 간단)
-1. PR 페이지에서 스킵 라벨 제거
+1. PR 페이지에서 `skip-ci` 라벨 제거
 2. 워크플로우가 자동으로 다시 실행됨
 
 ### 방법 2: 키워드 제거
-1. PR 제목/본문에서 스킵 키워드 제거
+1. PR 제목에서 `[skip ci]` 제거
 2. 새로운 커밋 추가
 3. 다시 머지
 
@@ -104,24 +62,21 @@ refactor: 코드 리팩토링
 #### 1. **PR 라벨 사용 (가장 효율적)**
 ```bash
 # GitHub CLI로 라벨과 함께 PR 생성
-gh pr create --title "docs: API 가이드 추가" --label "docs-only"
-gh pr create --title "ci: 워크플로우 개선" --label "workflow-only"
+gh pr create --title "docs: API 가이드 추가" --label "skip-ci"
+gh pr create --title "ci: 워크플로우 개선" --label "skip-ci"
 gh pr create --title "fix: README 수정" --label "skip-ci"
 ```
 
 #### 2. **커밋 메시지 키워드**
 ```bash
 # 문서 작업
-git commit -m "docs: API 가이드 추가 [docs only]"
+git commit -m "docs: API 가이드 추가 [skip ci]"
 
 # 워크플로우 수정
-git commit -m "ci: 빌드 스크립트 개선 [workflow only]"
+git commit -m "ci: 빌드 스크립트 개선 [skip ci]"
 
 # README 수정
 git commit -m "docs: README 업데이트 [skip ci]"
-
-# 설정 파일 수정
-git commit -m "config: .gitignore 업데이트 [no deploy]"
 ```
 
 ### ⚡ 효율성 개선
@@ -144,15 +99,13 @@ git commit -m "config: .gitignore 업데이트 [no deploy]"
 스킵 이유: PR 라벨에 'skip-ci' 발견
 
 스킵 조건:
-- PR 라벨에 스킵 라벨 포함 (최우선)
-- PR 제목/본문에 스킵 키워드 포함
-- 문서나 설정 파일만 변경 (paths-ignore)
+- PR 라벨에 'skip-ci' 포함
+- PR 제목에 '[skip ci]' 키워드 포함
 
 배포를 원하는 경우:
-1. PR 라벨에서 스킵 라벨 제거
-2. PR 제목/본문에서 스킵 키워드 제거
+1. PR 라벨에서 'skip-ci' 제거
+2. PR 제목에서 '[skip ci]' 제거
 3. 새로운 커밋 추가 후 다시 머지
-4. 또는 수동으로 workflow_dispatch 실행
 ```
 
 ## 🚨 주의사항
@@ -171,5 +124,4 @@ git commit -m "config: .gitignore 업데이트 [no deploy]"
 
 ### 최적화 제안
 - 자주 스킵되는 패턴 분석
-- paths-ignore 규칙 조정
 - 팀 컨벤션 정립 
