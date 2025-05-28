@@ -1,3 +1,4 @@
+import java.io.ByteArrayOutputStream
 import java.io.FileInputStream
 import java.util.Properties
 
@@ -16,6 +17,35 @@ fun loadConfigProperties(buildType: String): Properties {
     }
 }
 
+fun getVersionFromTag(): Triple<Int, Int, Int> {
+    try {
+        // CI/CD에서 생성한 베타 태그가 있는 경우 해당 버전 사용
+        System.getenv("BETA_VERSION")?.let { betaVersion ->
+            val version = betaVersion.split(".")
+            return Triple(
+                version.getOrNull(0)?.toIntOrNull() ?: 1,
+                version.getOrNull(1)?.toIntOrNull() ?: 0,
+                version.getOrNull(2)?.toIntOrNull() ?: 0,
+            )
+        }
+
+        val stdout = ByteArrayOutputStream()
+        exec {
+            commandLine("git", "describe", "--tags", "--abbrev=0")
+            standardOutput = stdout
+        }
+        val tag = stdout.toString().trim()
+        val version = tag.removePrefix("v").split(".")
+        return Triple(
+            version.getOrNull(0)?.toIntOrNull() ?: 1,
+            version.getOrNull(1)?.toIntOrNull() ?: 0,
+            version.getOrNull(2)?.toIntOrNull() ?: 0,
+        )
+    } catch (e: Exception) {
+        return Triple(1, 0, 0)
+    }
+}
+
 android {
     namespace = "toy.practice.androidtest"
     compileSdk = 35
@@ -25,28 +55,28 @@ android {
         minSdk = 24
         targetSdk = 35
 
-        val versionProps =
-            Properties().apply {
-                val propsFile = rootProject.file("version.properties")
-                if (propsFile.exists()) {
-                    load(FileInputStream(propsFile))
+        // 버전 코드는 환경변수나 프로젝트 속성에서 가져옴
+        versionCode = System.getenv("VERSION_CODE")?.toIntOrNull() // CI/CD
+            ?: project.findProperty("VERSION_CODE")?.toString()?.toIntOrNull() // 로컬
+            ?: 1 // 기본값
+
+        // 버전명은 Git 태그 기반
+        val (major, minor, patch) = getVersionFromTag()
+        versionName =
+            buildString {
+                append("$major.$minor.$patch")
+                if (!project.hasProperty("release")) { // 릴리즈 빌드가 아닐 경우
+                    append("-beta")
+                    System.getenv("BUILD_TIMESTAMP")?.let { append(".$it") }
                 }
             }
-
-        versionCode = (versionProps["VERSION_CODE"] as? String)?.toIntOrNull() ?: 1
-        val vMajor = (versionProps["VERSION_MAJOR"] as? String)?.toIntOrNull() ?: 1
-        val vMinor = (versionProps["VERSION_MINOR"] as? String)?.toIntOrNull() ?: 0
-        val vPatch = (versionProps["VERSION_PATCH"] as? String)?.toIntOrNull() ?: 0
-
-        // 기본 버전 이름 설정
-        versionName = "$vMajor.$vMinor.$vPatch"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildFeatures {
         compose = true
-        buildConfig = true // BuildConfig 생성 활성화
+        buildConfig = true
     }
 
     buildTypes {
@@ -54,8 +84,7 @@ android {
         val releaseProps = loadConfigProperties("release")
 
         debug {
-            // debug 빌드일 때 'd' 접미사 추가
-            versionNameSuffix = "d"
+            applicationIdSuffix = ".debug"
             debugProps.forEach { (key, value) ->
                 buildConfigField("String", key.toString(), "\"$value\"")
             }
@@ -88,8 +117,8 @@ android {
         outputs
             .map { it as com.android.build.gradle.internal.api.BaseVariantOutputImpl }
             .forEach { output ->
-                val versionName = variant.versionName ?: defaultConfig.versionName
-                output.outputFileName = "android-toy-$versionName-${variant.buildType.name}.apk"
+                val appName = variant.applicationId.replace(".", "-")
+                output.outputFileName = "$appName-${variant.versionName}-${variant.buildType.name}.apk"
             }
     }
 
@@ -123,4 +152,11 @@ dependencies {
 
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
+}
+
+// Add task to print applicationId
+tasks.register("printApplicationId") {
+    doLast {
+        println(android.defaultConfig.applicationId)
+    }
 }

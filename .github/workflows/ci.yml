@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [ "main", "dev" ]
+
+# PR이 열려있는 동안 동일한 PR에 대해서는 최신 커밋만 실행
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # 코드 검증 작업
+  validate:
+    name: Validate Code
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Check code style
+        run: ./gradlew spotlessCheck
+        
+      - name: Run Android Lint
+        run: ./gradlew lint
+        
+      - name: Upload Lint Report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lint-report-${{ github.event.number }}
+          path: app/build/reports/lint-results-debug.html
+
+  # PR 검증용 테스트 및 빌드 작업
+  test-and-build:
+    name: Test and Build
+    needs: [validate]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Run Unit Tests
+        run: ./gradlew testDebugUnitTest
+        
+      - name: Upload Test Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ github.event.number }}
+          path: app/build/reports/tests/testDebugUnitTest/
+
+      - name: Build Debug APK
+        run: ./gradlew assembleDebug
+        
+      - name: Upload Debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-apk-${{ github.event.number }}
+          path: app/build/outputs/apk/debug/*.apk
+          retention-days: 7
+
+  # PR 상태 체크 (모든 CI 작업이 성공했는지 확인)
+  ci-status:
+    name: CI Status Check
+    needs: [validate, test-and-build]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Check CI Results
+        run: |
+          if [[ "${{ needs.validate.result }}" == "success" && "${{ needs.test-and-build.result }}" == "success" ]]; then
+            echo "✅ 모든 CI 검사가 성공했습니다!"
+            echo "PR을 머지할 준비가 되었습니다."
+          else
+            echo "❌ CI 검사 중 일부가 실패했습니다."
+            echo "validate: ${{ needs.validate.result }}"
+            echo "test-and-build: ${{ needs.test-and-build.result }}"
+            exit 1
+          fi 

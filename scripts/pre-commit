@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# 코드 린트 검사 및 적용 (Spotless)
+# 코드 린트 검사 및 적용 (Spotless, Android Lint)
 # 이 스크립트는 /build.gradle.kts 의 tasks에서 updateGitHooks를 인식해 git pre-commit 훅으로 사용됩니다.
 
 # 변경된 파일들 이름만 추출 후 저장
@@ -11,6 +11,22 @@ echo "Running spotlessApply. Formatting code..."
 ./gradlew spotlessApply || {
     echo "코드 포맷팅에 실패했습니다."
     echo "오류를 수정한 후 다시 시도해주세요."
+    exit 1
+}
+
+# Kotlin 컴파일 체크
+echo "Checking Kotlin compilation..."
+./gradlew compileDebugKotlin || {
+    echo "Kotlin 컴파일에 실패했습니다."
+    echo "오류를 수정한 후 다시 시도해주세요."
+    exit 1
+}
+
+# Android Lint 실행
+echo "Running Android Lint. Checking code..."
+./gradlew lint || {
+    echo "린트 검사에 실패했습니다."
+    echo "app/build/reports/lint-results-debug.html 파일에서 오류를 확인하고 수정해주세요."
     exit 1
 }
  
