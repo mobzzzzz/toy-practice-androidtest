@@ -41,71 +41,131 @@ jobs:
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git config --global user.name "github-actions[bot]"
 
-      - name: Sync Main to Dev
+      - name: Check if sync is needed
+        id: check-sync
         run: |
-          echo "🔄 Starting main → dev synchronization..."
+          echo "🔍 Checking if synchronization is needed..."
           
           # 최신 상태로 업데이트
           git fetch origin
           
-          # dev 브랜치로 전환
-          git checkout dev
-          git pull origin dev
-          
-          # main의 변경사항이 있는지 확인
-          if git merge-base --is-ancestor origin/main dev; then
+          # main과 dev의 차이점 확인
+          if git merge-base --is-ancestor origin/main origin/dev; then
             echo "✅ Dev is already up to date with main"
             if [ "${{ github.event.inputs.force_sync }}" != "true" ]; then
+              echo "sync_needed=false" >> $GITHUB_OUTPUT
               echo "No sync needed. Exiting."
               exit 0
+            else
+              echo "🔄 Force sync requested"
+              echo "sync_needed=true" >> $GITHUB_OUTPUT
             fi
+          else
+            echo "📥 Sync needed: dev is behind main"
+            echo "sync_needed=true" >> $GITHUB_OUTPUT
           fi
+
+      - name: Attempt automatic sync
+        if: steps.check-sync.outputs.sync_needed == 'true'
+        id: auto-sync
+        run: |
+          echo "🔄 Starting main → dev synchronization..."
           
-          # main의 변경사항을 dev에 병합
-          echo "📥 Merging main into dev..."
-          git merge origin/main --no-edit
+          # dev 브랜치로 전환
+          git checkout -b temp-sync-branch origin/dev
           
-          # 충돌이 발생한 경우 처리
-          if [ $? -ne 0 ]; then
-            echo "❌ Merge conflict detected!"
-            echo "Creating PR for manual conflict resolution..."
+          # main의 변경사항을 임시 브랜치에 병합 시도
+          echo "📥 Attempting to merge main into temp branch..."
+          if git merge origin/main --no-edit; then
+            echo "✅ Automatic merge successful"
+            echo "merge_success=true" >> $GITHUB_OUTPUT
             
-            # 충돌 해결을 위한 브랜치 생성
-            conflict_branch="sync/main-to-dev-$(date +%Y%m%d%H%M%S)"
-            git checkout -b $conflict_branch
-            git add .
-            git commit -m "conflict: main → dev 동기화 중 충돌 발생 - 수동 해결 필요"
-            git push origin $conflict_branch
+            # dev 브랜치로 전환하고 fast-forward
+            git checkout dev || git checkout -b dev origin/dev
+            git merge temp-sync-branch --ff-only
+            git push origin dev
             
-            # PR 생성
-            gh pr create \
-              --base dev \
-              --head $conflict_branch \
-              --title "🔄 [자동] Main → Dev 동기화 (충돌 해결 필요)" \
-              --body "Main 브랜치의 변경사항을 dev에 동기화하는 중 충돌이 발생했습니다. 수동으로 충돌을 해결해주세요." \
-              --label "sync,conflict"
+            echo "🎉 Synchronization completed successfully!"
+          else
+            echo "❌ Automatic merge failed due to conflicts"
+            echo "merge_success=false" >> $GITHUB_OUTPUT
             
-            exit 1
+            # 충돌 상태 정리
+            git merge --abort
           fi
+
+      - name: Create conflict resolution PR
+        if: steps.check-sync.outputs.sync_needed == 'true' && steps.auto-sync.outputs.merge_success == 'false'
+        run: |
+          echo "🔧 Creating PR for manual conflict resolution..."
           
-          # 성공적으로 병합된 경우 push
-          echo "✅ Successfully merged main into dev"
-          git push origin dev
+          # 충돌 해결을 위한 브랜치 생성
+          conflict_branch="sync/main-to-dev-$(date +%Y%m%d%H%M%S)"
+          git checkout -b $conflict_branch origin/dev
           
-          echo "🎉 Synchronization completed!"
+          # main의 변경사항을 병합하되 충돌 상태로 유지
+          git merge origin/main --no-edit || true
+          
+          # 충돌 파일들을 확인하고 상태 저장
+          echo "## 🔄 Main → Dev 동기화 충돌 해결 필요" > conflict-resolution.md
+          echo "" >> conflict-resolution.md
+          echo "다음 파일들에서 충돌이 발생했습니다:" >> conflict-resolution.md
+          echo "" >> conflict-resolution.md
+          git status --porcelain | grep "^UU\|^AA\|^DD" | while read status file; do
+            echo "- \`$file\`" >> conflict-resolution.md
+          done
+          echo "" >> conflict-resolution.md
+          echo "### 해결 방법:" >> conflict-resolution.md
+          echo "1. 각 충돌 파일을 열어서 충돌 마커를 확인하세요" >> conflict-resolution.md
+          echo "2. 적절한 변경사항을 선택하거나 병합하세요" >> conflict-resolution.md
+          echo "3. \`git add <파일명>\`으로 해결된 파일을 추가하세요" >> conflict-resolution.md
+          echo "4. \`git commit\`으로 병합을 완료하세요" >> conflict-resolution.md
+          echo "5. 이 PR을 dev 브랜치로 병합하세요" >> conflict-resolution.md
+          
+          # 충돌 상태 그대로 커밋
+          git add .
+          git commit -m "conflict: main → dev 동기화 중 충돌 발생 - 수동 해결 필요
+
+          충돌 파일들:
+          $(git status --porcelain | grep '^UU\|^AA\|^DD' | cut -c4-)
+          
+          해결 후 이 PR을 dev 브랜치로 병합해주세요."
+          
+          git push origin $conflict_branch
+          
+          # PR 생성
+          gh pr create \
+            --base dev \
+            --head $conflict_branch \
+            --title "🔄 [자동] Main → Dev 동기화 (충돌 해결 필요)" \
+            --body-file conflict-resolution.md \
+            --label "sync,conflict,hotfix"
+          
+          echo "📋 충돌 해결 PR이 생성되었습니다."
 
       - name: Create Sync Summary
-        if: success()
+        if: always()
         run: |
           echo "## 🔄 Branch Sync Summary" >> $GITHUB_STEP_SUMMARY
           echo "- **Source**: main" >> $GITHUB_STEP_SUMMARY
           echo "- **Target**: dev" >> $GITHUB_STEP_SUMMARY
-          echo "- **Status**: ✅ Success" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ steps.check-sync.outputs.sync_needed }}" == "false" ]; then
+            echo "- **Status**: ✅ Already up to date" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ steps.auto-sync.outputs.merge_success }}" == "true" ]; then
+            echo "- **Status**: ✅ Automatic sync successful" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ steps.auto-sync.outputs.merge_success }}" == "false" ]; then
+            echo "- **Status**: ⚠️ Conflicts detected - PR created for manual resolution" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- **Status**: ❌ Sync failed" >> $GITHUB_STEP_SUMMARY
+          fi
+          
           echo "- **Time**: $(date)" >> $GITHUB_STEP_SUMMARY
 
-      - name: Notify on Failure
-        if: failure()
+      - name: Cleanup
+        if: always()
         run: |
-          echo "## ❌ Branch Sync Failed" >> $GITHUB_STEP_SUMMARY
-          echo "Main → Dev 동기화 중 문제가 발생했습니다." >> $GITHUB_STEP_SUMMARY
-          echo "수동으로 확인이 필요합니다." >> $GITHUB_STEP_SUMMARY 
+          # 임시 브랜치들 정리
+          git checkout main 2>/dev/null || true
+          git branch -D temp-sync-branch 2>/dev/null || true
+          rm -f conflict-resolution.md 2>/dev/null || true 
