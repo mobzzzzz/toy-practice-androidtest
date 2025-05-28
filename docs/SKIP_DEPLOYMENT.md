@@ -1,18 +1,30 @@
-# 🚫 배포 스킵 기능 가이드
+# 🚫 CI/CD 스킵 기능 가이드
 
-문서나 워크플로우 변경 시 불필요한 APK 빌드와 배포를 방지하는 기능입니다.
+문서나 워크플로우 변경 시 불필요한 CI 실행과 APK 빌드/배포를 방지하는 기능입니다.
 
 ## 📋 스킵 조건
 
 ### 1. **PR 라벨 스킵 (최우선)**
-PR에 `skip-ci` 라벨이 있으면 배포가 스킵됩니다.
+PR에 `skip-ci` 라벨이 있으면 CI와 배포가 모두 스킵됩니다.
 
 ### 2. **커밋 메시지 키워드**
-PR 제목에 `[skip ci]` 키워드를 포함하면 배포가 스킵됩니다.
+PR 제목에 `[skip ci]` 키워드를 포함하면 CI와 배포가 모두 스킵됩니다.
+
+## 🎯 스킵되는 작업
+
+### CI 워크플로우
+- **Validate Code**: Code Style Check, Android Lint
+- **Test and Build**: Unit Tests, Debug APK Build
+- **CI Status Check**: 전체 CI 상태 확인
+
+### CD 워크플로우 (Dev/Main)
+- **APK 빌드**: Release/Debug APK 생성
+- **버전 관리**: 태그 생성, 버전 코드 업데이트
+- **릴리즈 생성**: GitHub Release 생성
 
 ## 💡 사용 예시
 
-### ✅ 배포 스킵되는 경우
+### ✅ CI/CD 스킵되는 경우
 
 #### 1. **PR 라벨 사용 (권장)**
 ```markdown
@@ -28,7 +40,7 @@ fix: README 오타 수정 [skip ci]
 workflow: GitHub Actions 개선 [skip ci]
 ```
 
-### ❌ 배포 진행되는 경우
+### ❌ CI/CD 진행되는 경우
 
 ```markdown
 # 일반적인 개발 작업
@@ -37,9 +49,9 @@ fix: 버그 수정 및 성능 개선
 refactor: 코드 리팩토링
 ```
 
-## 🔄 배포를 원하는 경우
+## 🔄 CI/CD를 원하는 경우
 
-스킵 조건에 해당하지만 배포가 필요한 경우:
+스킵 조건에 해당하지만 CI/CD가 필요한 경우:
 
 ### 방법 1: 라벨 제거 (가장 간단)
 1. PR 페이지에서 `skip-ci` 라벨 제거
@@ -81,7 +93,8 @@ git commit -m "docs: README 업데이트 [skip ci]"
 
 ### ⚡ 효율성 개선
 
-- **빌드 시간 절약**: 불필요한 APK 빌드 방지
+- **CI 시간 절약**: 불필요한 테스트/빌드 방지 (3-5분 절약)
+- **CD 시간 절약**: 불필요한 APK 빌드/배포 방지 (5-10분 절약)
 - **리소스 절약**: GitHub Actions 크레딧 절약
 - **명확한 의도**: 스킵 이유가 로그에 표시
 
@@ -89,10 +102,24 @@ git commit -m "docs: README 업데이트 [skip ci]"
 
 ### GitHub Actions에서 확인
 1. Actions 탭에서 워크플로우 실행 확인
-2. "Deployment Skipped" Job 확인
-3. 스킵 이유 로그 확인
+2. "Check Skip CI" Job에서 스킵 여부 확인
+3. 스킵된 Job들이 성공 상태로 표시됨
 
-### 스킵 알림 예시
+### CI 스킵 알림 예시
+```
+🚫 CI가 스킵되었습니다
+
+스킵 이유: PR 라벨에 'skip-ci' 발견
+
+스킵 조건:
+- PR 라벨에 'skip-ci' 포함
+- PR 제목에 '[skip ci]' 키워드 포함
+
+✅ Required Checks 통과 (모든 CI 작업 스킵됨)
+PR 머지가 가능합니다.
+```
+
+### CD 스킵 알림 예시
 ```
 🚫 배포가 스킵되었습니다
 
@@ -111,9 +138,10 @@ git commit -m "docs: README 업데이트 [skip ci]"
 ## 🚨 주의사항
 
 1. **스킵된 Job은 "Success" 상태**로 표시됩니다
-2. **Required checks**가 설정된 경우에도 머지가 가능합니다
+2. **Required checks**가 모두 통과한 것으로 인식됩니다
 3. **실제 코드 변경**이 있는 경우 스킵 키워드를 사용하지 마세요
 4. **Hotfix 브랜치**에서는 신중하게 사용하세요
+5. **CI 스킵 시에도 PR 머지가 가능**합니다
 
 ## 📈 모니터링
 

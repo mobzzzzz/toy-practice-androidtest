@@ -10,10 +10,49 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # CI 스킵 여부 확인
+  check-skip-ci:
+    name: Check Skip CI
+    runs-on: ubuntu-latest
+    outputs:
+      should_skip: ${{ steps.check-skip.outputs.should_skip }}
+      skip_reason: ${{ steps.check-skip.outputs.skip_reason }}
+    steps:
+      - name: Check Skip Conditions
+        id: check-skip
+        run: |
+          pr_title="${{ github.event.pull_request.title }}"
+          pr_labels='${{ toJson(github.event.pull_request.labels.*.name) }}'
+          
+          should_skip="false"
+          skip_reason=""
+          
+          # 1. PR 라벨에서 skip-ci 확인 (최우선)
+          if echo "$pr_labels" | grep -q '"skip-ci"'; then
+            should_skip="true"
+            skip_reason="PR 라벨에 'skip-ci' 발견"
+          # 2. 커밋 메시지에서 [skip ci] 확인
+          elif [[ "$pr_title" == *"[skip ci]"* ]]; then
+            should_skip="true"
+            skip_reason="PR 제목에 '[skip ci]' 키워드 발견"
+          fi
+          
+          echo "should_skip=$should_skip" >> $GITHUB_OUTPUT
+          echo "skip_reason=$skip_reason" >> $GITHUB_OUTPUT
+          
+          if [ "$should_skip" = "true" ]; then
+            echo "🚫 CI 스킵: $skip_reason"
+            echo "💡 CI를 실행하려면 PR 라벨에서 'skip-ci'를 제거하거나 제목에서 '[skip ci]'를 제거하세요."
+          else
+            echo "✅ CI 진행: 스킵 조건에 해당하지 않음"
+          fi
+
   # 코드 검증 작업
   validate:
     name: Validate Code
     runs-on: ubuntu-latest
+    needs: [check-skip-ci]
+    if: needs.check-skip-ci.outputs.should_skip != 'true'
     steps:
       - uses: actions/checkout@v4
       
@@ -40,8 +79,9 @@ jobs:
   # PR 검증용 테스트 및 빌드 작업
   test-and-build:
     name: Test and Build
-    needs: [validate]
+    needs: [validate, check-skip-ci]
     runs-on: ubuntu-latest
+    if: needs.check-skip-ci.outputs.should_skip != 'true'
     steps:
       - uses: actions/checkout@v4
       
@@ -72,21 +112,74 @@ jobs:
           path: app/build/outputs/apk/debug/*.apk
           retention-days: 7
 
+  # CI 스킵 시 성공 상태 제공 (Required Checks 통과용)
+  validate-skipped:
+    name: Validate Code
+    runs-on: ubuntu-latest
+    needs: [check-skip-ci]
+    if: needs.check-skip-ci.outputs.should_skip == 'true'
+    steps:
+      - name: Skip Validation
+        run: |
+          echo "🚫 **코드 검증이 스킵되었습니다**"
+          echo ""
+          echo "**스킵 이유:** ${{ needs.check-skip-ci.outputs.skip_reason }}"
+          echo ""
+          echo "**스킵된 작업:**"
+          echo "- Code Style Check (spotlessCheck)"
+          echo "- Android Lint"
+          echo ""
+          echo "✅ Required Check 통과 (스킵됨)"
+
+  test-and-build-skipped:
+    name: Test and Build
+    runs-on: ubuntu-latest
+    needs: [check-skip-ci]
+    if: needs.check-skip-ci.outputs.should_skip == 'true'
+    steps:
+      - name: Skip Test and Build
+        run: |
+          echo "🚫 **테스트 및 빌드가 스킵되었습니다**"
+          echo ""
+          echo "**스킵 이유:** ${{ needs.check-skip-ci.outputs.skip_reason }}"
+          echo ""
+          echo "**스킵된 작업:**"
+          echo "- Unit Tests"
+          echo "- Debug APK Build"
+          echo ""
+          echo "✅ Required Check 통과 (스킵됨)"
+
   # PR 상태 체크 (모든 CI 작업이 성공했는지 확인)
   ci-status:
     name: CI Status Check
-    needs: [validate, test-and-build]
+    needs: [check-skip-ci, validate, test-and-build, validate-skipped, test-and-build-skipped]
     runs-on: ubuntu-latest
     if: always()
     steps:
       - name: Check CI Results
         run: |
-          if [[ "${{ needs.validate.result }}" == "success" && "${{ needs.test-and-build.result }}" == "success" ]]; then
-            echo "✅ 모든 CI 검사가 성공했습니다!"
-            echo "PR을 머지할 준비가 되었습니다."
+          skip_ci="${{ needs.check-skip-ci.outputs.should_skip }}"
+          
+          if [[ "$skip_ci" == "true" ]]; then
+            echo "🚫 **CI가 스킵되었습니다**"
+            echo ""
+            echo "**스킵 이유:** ${{ needs.check-skip-ci.outputs.skip_reason }}"
+            echo ""
+            echo "**스킵 조건:**"
+            echo "- PR 라벨에 'skip-ci' 포함"
+            echo "- PR 제목에 '[skip ci]' 키워드 포함"
+            echo ""
+            echo "✅ **Required Checks 통과** (모든 CI 작업 스킵됨)"
+            echo "PR 머지가 가능합니다."
           else
-            echo "❌ CI 검사 중 일부가 실패했습니다."
-            echo "validate: ${{ needs.validate.result }}"
-            echo "test-and-build: ${{ needs.test-and-build.result }}"
-            exit 1
+            # 일반적인 CI 결과 확인
+            if [[ "${{ needs.validate.result }}" == "success" && "${{ needs.test-and-build.result }}" == "success" ]]; then
+              echo "✅ 모든 CI 검사가 성공했습니다!"
+              echo "PR을 머지할 준비가 되었습니다."
+            else
+              echo "❌ CI 검사 중 일부가 실패했습니다."
+              echo "validate: ${{ needs.validate.result }}"
+              echo "test-and-build: ${{ needs.test-and-build.result }}"
+              exit 1
+            fi
           fi 
