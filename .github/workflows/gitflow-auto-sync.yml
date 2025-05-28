@@ -63,14 +63,14 @@ jobs:
               echo "🚨 Hotfix 브랜치 머지 감지: $pr_branch"
               should_sync="true"
               sync_type="hotfix"
-              source_branch="$pr_branch"
+              source_branch="main"
               sync_reason="Hotfix $pr_branch 를 dev에 동기화"
             
             elif [[ "$pr_branch" =~ ^release/ ]]; then
               echo "🚀 Release 브랜치 머지 감지: $pr_branch"
               should_sync="true"
               sync_type="release"
-              source_branch="$pr_branch"
+              source_branch="main"
               sync_reason="Release $pr_branch 를 dev에 동기화"
             fi
           
@@ -90,22 +90,10 @@ jobs:
               if [[ -n "$recent_commits" ]]; then
                 echo "🔄 GitFlow 머지 커밋 감지:"
                 echo "$recent_commits"
-                
-                # 가장 최근 머지된 브랜치 찾기
-                latest_merge=$(git log --oneline -1 --grep="Merge.*hotfix\|Merge.*release" --format="%s" || echo "")
-                if [[ "$latest_merge" =~ hotfix/([^[:space:]]+) ]]; then
-                  merged_branch="hotfix/${BASH_REMATCH[1]}"
-                  sync_type="hotfix_merged"
-                elif [[ "$latest_merge" =~ release/([^[:space:]]+) ]]; then
-                  merged_branch="release/${BASH_REMATCH[1]}"
-                  sync_type="release_merged"
-                fi
-                
-                if [[ -n "$merged_branch" ]]; then
-                  should_sync="true"
-                  source_branch="$merged_branch"
-                  sync_reason="$merged_branch 가 main에 머지되어 dev에 동기화"
-                fi
+                should_sync="true"
+                sync_type="main_push"
+                source_branch="main"
+                sync_reason="Main 브랜치에 GitFlow 머지 커밋 감지"
               fi
             fi
           fi
@@ -122,7 +110,7 @@ jobs:
           echo "  - 동기화 이유: $sync_reason"
 
   sync-to-dev:
-    name: Dev 브랜치 동기화
+    name: Dev 브랜치 Fast-forward 동기화
     runs-on: ubuntu-latest
     needs: detect-gitflow-changes
     if: needs.detect-gitflow-changes.outputs.should_sync == 'true'
@@ -138,9 +126,9 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Dev 브랜치 동기화
+      - name: Fast-forward 동기화 실행
         run: |
-          echo "🔄 GitFlow 자동 동기화를 시작합니다..."
+          echo "⚡ GitFlow Fast-forward 동기화를 시작합니다..."
           echo "📋 동기화 정보:"
           echo "  - 타입: ${{ needs.detect-gitflow-changes.outputs.sync_type }}"
           echo "  - 소스: ${{ needs.detect-gitflow-changes.outputs.source_branch }}"
@@ -160,97 +148,47 @@ jobs:
           
           # 소스 브랜치 결정
           source_branch="${{ needs.detect-gitflow-changes.outputs.source_branch }}"
-          sync_type="${{ needs.detect-gitflow-changes.outputs.sync_type }}"
           
-          echo "🔀 $source_branch 브랜치의 변경사항을 dev에 머지합니다..."
+          echo "🎯 Fast-forward 머지 소스: origin/$source_branch"
           
-          # 소스 브랜치가 원격에 존재하는지 확인
-          if [[ "$sync_type" == "manual" ]]; then
-            # 수동 실행의 경우 main 브랜치 사용
-            merge_source="origin/main"
-          elif git show-ref --verify --quiet "refs/remotes/origin/$source_branch"; then
-            # 원격 브랜치가 존재하는 경우
-            merge_source="origin/$source_branch"
-          elif [[ "$sync_type" =~ _merged$ ]]; then
-            # 이미 머지된 브랜치의 경우 main에서 해당 커밋 찾기
-            echo "🔍 main 브랜치에서 $source_branch 머지 커밋을 찾습니다..."
-            merge_commit=$(git log --oneline -10 --grep="Merge.*$source_branch" --format="%H" | head -1)
-            if [[ -n "$merge_commit" ]]; then
-              merge_source="$merge_commit"
-              echo "📍 머지 커밋 발견: $merge_commit"
-            else
-              echo "⚠️ 머지 커밋을 찾을 수 없어 main 브랜치를 사용합니다."
-              merge_source="origin/main"
-            fi
+          # Fast-forward 가능한지 확인
+          if git merge-base --is-ancestor HEAD "origin/$source_branch"; then
+            echo "⚡ Fast-forward 머지를 수행합니다..."
+            git merge "origin/$source_branch" --ff-only
+            
+            echo "✅ Fast-forward 동기화가 완료되었습니다!"
+            echo "📊 결과: Fast-forward (merge 커밋 없음)"
+            
           else
-            echo "⚠️ 소스 브랜치 $source_branch 를 찾을 수 없어 main 브랜치를 사용합니다."
-            merge_source="origin/main"
+            echo "⚠️ Fast-forward가 불가능합니다."
+            echo "📊 현재 상태:"
+            echo "  - dev HEAD: $(git rev-parse --short HEAD)"
+            echo "  - $source_branch HEAD: $(git rev-parse --short origin/$source_branch)"
+            
+            # Fast-forward 불가능한 경우 강제 동기화 옵션
+            echo "🔄 강제 동기화를 수행합니다 (dev를 $source_branch 상태로 리셋)..."
+            git reset --hard "origin/$source_branch"
+            
+            echo "✅ 강제 동기화가 완료되었습니다!"
+            echo "📊 결과: Hard reset (완전 동기화)"
           fi
-          
-          echo "🎯 머지 소스: $merge_source"
-          
-          # Fast-forward 가능한지 확인 (커밋 해시가 아닌 경우만)
-          if [[ "$merge_source" =~ ^[0-9a-f]{40}$ ]]; then
-            # 커밋 해시인 경우 직접 머지
-            echo "🔀 커밋 머지를 수행합니다."
-            
-            sync_reason="${{ needs.detect-gitflow-changes.outputs.sync_reason }}"
-            event_name="${{ github.event_name }}"
-            current_time=$(date '+%Y-%m-%d %H:%M:%S KST')
-            
-            commit_msg="sync: GitFlow 동기화 - ${sync_reason} (트리거: ${event_name}, 시간: ${current_time})"
-            
-            if git merge "$merge_source" --no-ff -m "$commit_msg"; then
-              merge_result="merge"
-            else
-              echo "❌ 자동 머지에 실패했습니다. 충돌이 발생했습니다."
-              merge_result="conflict"
-            fi
-          elif git merge-base --is-ancestor origin/dev "$merge_source"; then
-            echo "⚡ Fast-forward 머지가 가능합니다."
-            git merge "$merge_source" --ff-only
-            merge_result="fast-forward"
-          else
-            echo "🔀 일반 머지를 수행합니다."
-            
-            sync_reason="${{ needs.detect-gitflow-changes.outputs.sync_reason }}"
-            event_name="${{ github.event_name }}"
-            current_time=$(date '+%Y-%m-%d %H:%M:%S KST')
-            
-            commit_msg="sync: GitFlow 동기화 - ${sync_reason} (트리거: ${event_name}, 시간: ${current_time})"
-            
-            if git merge "$merge_source" --no-ff -m "$commit_msg"; then
-              merge_result="merge"
-            else
-              echo "❌ 자동 머지에 실패했습니다. 충돌이 발생했습니다."
-              merge_result="conflict"
-            fi
-          fi
-          
-          if [[ "$merge_result" == "conflict" ]]; then
-            echo "🚨 충돌 해결이 필요합니다!"
-            echo "::error::GitFlow 동기화 중 충돌이 발생했습니다. 수동 해결이 필요합니다."
-            exit 1
-          fi
-          
-          echo "✅ 동기화가 완료되었습니다! ($merge_result)"
 
       - name: Dev 브랜치 푸시
         run: |
           echo "📤 dev 브랜치를 원격 저장소에 푸시합니다..."
-          git push origin dev
+          git push origin dev --force-with-lease
           echo "✅ 푸시가 완료되었습니다!"
 
       - name: 동기화 결과 알림
         run: |
-          echo "🎉 GitFlow 자동 동기화가 성공적으로 완료되었습니다!"
+          echo "🎉 GitFlow Fast-forward 동기화가 성공적으로 완료되었습니다!"
           echo ""
           echo "📋 동기화 요약:"
           echo "  - 타입: ${{ needs.detect-gitflow-changes.outputs.sync_type }}"
           echo "  - 소스: ${{ needs.detect-gitflow-changes.outputs.source_branch }}"
           echo "  - 대상: dev 브랜치"
           echo "  - 이유: ${{ needs.detect-gitflow-changes.outputs.sync_reason }}"
+          echo "  - 방식: Fast-forward only (merge 커밋 없음)"
           echo ""
           echo "🔗 브랜치 상태:"
-          echo "  - 소스: $(git rev-parse --short ${{ needs.detect-gitflow-changes.outputs.source_branch }} 2>/dev/null || echo 'N/A')"
-          echo "  - dev:  $(git rev-parse --short HEAD)" 
+          echo "  - dev HEAD: $(git rev-parse --short HEAD)" 
