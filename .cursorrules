@@ -38,7 +38,7 @@
      * hotfix → main/master
    - 변경사항 기반 PR 제목 생성
    - .pr-description.md 임시 파일로 PR 본문 작성
-   - GitHub CLI로 PR 생성 후 임시 파일 삭제, 임시 파일 삭제는 rm 명령어로 확실히 제거
+   - GitHub CLI로 PR 생성 후 임시 파일 본문 비워주기
    - 간단한 문서 작업이나 workflow 작업일 경우 skip-ci 라벨을 부여
 
 - 효율성 개선:
