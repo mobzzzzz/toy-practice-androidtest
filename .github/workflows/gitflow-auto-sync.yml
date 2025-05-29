@@ -56,16 +56,11 @@ jobs:
               source_branch="$current_branch"
               sync_reason="Release $current_branch 에 새 커밋 추가됨"
             elif [[ "$current_branch" == "main" ]]; then
-              # main 브랜치에서 최근 GitFlow 머지 확인
-              recent_commits=$(git log --oneline -3 --grep="Merge.*hotfix\|Merge.*release" || echo "")
-              if [[ -n "$recent_commits" ]]; then
-                echo "🔄 GitFlow 머지 커밋 감지:"
-                echo "$recent_commits"
-                should_sync="true"
-                sync_type="main_push"
-                source_branch="main"
-                sync_reason="Main 브랜치에 GitFlow 머지 커밋 감지"
-              fi
+              echo "🔄 Main 브랜치에 새 커밋 감지 - 자동 동기화 실행"
+              should_sync="true"
+              sync_type="main_push"
+              source_branch="main"
+              sync_reason="Main 브랜치에 새 커밋 추가됨 - GitFlow 동기화 필요"
             fi
           fi
           
