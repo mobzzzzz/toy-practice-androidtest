@@ -248,40 +248,37 @@ jobs:
           http_code=$(echo "$api_response" | tr -d '\n' | sed -e 's/.*HTTPSTATUS://')
           
           if [ "$http_code" = "200" ]; then
-            echo "⚠️ 경고: 태그 $TAG_NAME에 대한 릴리즈가 이미 존재합니다!"
+            echo "🔄 같은 태그명의 릴리즈가 이미 존재합니다: $TAG_NAME"
             
             # 기존 릴리즈 정보 추출
             response_body=$(echo "$api_response" | sed -e 's/HTTPSTATUS:.*//g')
             existing_id=$(echo "$response_body" | jq -r '.id // empty')
             existing_name=$(echo "$response_body" | jq -r '.name // empty')
             is_draft=$(echo "$response_body" | jq -r '.draft // false')
+            is_prerelease=$(echo "$response_body" | jq -r '.prerelease // false')
             
             echo "기존 릴리즈 정보:"
             echo "  - ID: $existing_id"
             echo "  - 이름: $existing_name"
             echo "  - Draft 상태: $is_draft"
+            echo "  - Prerelease 상태: $is_prerelease"
             
-            if [ "$is_draft" = "true" ]; then
-              echo "🔄 기존 릴리즈가 Draft 상태입니다. 삭제 후 새로 생성합니다."
-              
-              # Draft 릴리즈 삭제
-              delete_response=$(curl -s -w "HTTPSTATUS:%{http_code}" \
-                -X DELETE \
-                -H "Authorization: token ${{ secrets.ADMIN_TOKEN }}" \
-                "https://api.github.com/repos/${{ github.repository }}/releases/$existing_id")
-              
-              delete_http_code=$(echo "$delete_response" | tr -d '\n' | sed -e 's/.*HTTPSTATUS://')
-              
-              if [ "$delete_http_code" = "204" ]; then
-                echo "✅ Draft 릴리즈 삭제 완료"
-                echo "can_create=true" >> $GITHUB_OUTPUT
-              else
-                echo "❌ Draft 릴리즈 삭제 실패: HTTP $delete_http_code"
-                echo "can_create=false" >> $GITHUB_OUTPUT
-                exit 1
-              fi
+            echo "🗑️ 기존 릴리즈를 삭제하고 새로 생성합니다."
+            
+            # 기존 릴리즈 삭제
+            delete_response=$(curl -s -w "HTTPSTATUS:%{http_code}" \
+              -X DELETE \
+              -H "Authorization: token ${{ secrets.ADMIN_TOKEN }}" \
+              "https://api.github.com/repos/${{ github.repository }}/releases/$existing_id")
+            
+            delete_http_code=$(echo "$delete_response" | tr -d '\n' | sed -e 's/.*HTTPSTATUS://')
+            
+            if [ "$delete_http_code" = "204" ]; then
+              echo "✅ 기존 릴리즈 삭제 완료 (ID: $existing_id)"
+              echo "can_create=true" >> $GITHUB_OUTPUT
             else
-              echo "❌ 이미 게시된 릴리즈가 존재합니다. 새 릴리즈를 생성할 수 없습니다."
+              echo "❌ 기존 릴리즈 삭제 실패: HTTP $delete_http_code"
+              echo "🔍 응답 내용: $delete_response"
               echo "can_create=false" >> $GITHUB_OUTPUT
               exit 1
             fi
