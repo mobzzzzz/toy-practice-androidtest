@@ -246,28 +246,37 @@ jobs:
           git fetch --tags
           
           # 이전 정식 릴리즈 태그 찾기 (베타 태그 제외)
-          # 현재 태그를 제외하고 v*.*.* 패턴의 정식 릴리즈 태그만 찾기
           previous_release_tag=$(git tag -l 'v*.*.*' --sort=-version:refname | grep -v beta | grep -v "$TAG_NAME" | head -1 || echo "")
           
           echo "🔍 이전 정식 릴리즈 태그 검색 결과: $previous_release_tag"
           echo "📋 현재 태그: $TAG_NAME"
+          echo "📋 현재 HEAD: $(git rev-parse --short HEAD)"
           
           if [ ! -z "$previous_release_tag" ]; then
-            echo "📈 이전 릴리즈부터 현재까지의 변경사항: $previous_release_tag..HEAD"
+            echo "📈 이전 릴리즈부터 현재 HEAD까지의 변경사항: $previous_release_tag..HEAD"
             
-            # 이전 릴리즈부터 현재까지의 모든 커밋 포함
-            git log --pretty=format:"- %s" "$previous_release_tag..HEAD" >> CHANGELOG.md
+            # 이전 릴리즈부터 현재 HEAD까지의 모든 커밋 포함 (TAG_NAME 대신 HEAD 사용)
+            commits=$(git log --pretty=format:"- %s" "$previous_release_tag..HEAD" 2>/dev/null || echo "")
             
-            echo "" >> CHANGELOG.md
-            echo "" >> CHANGELOG.md
-            echo "---" >> CHANGELOG.md
-            echo "**이전 릴리즈**: $previous_release_tag" >> CHANGELOG.md
+            if [ ! -z "$commits" ]; then
+              echo "$commits" >> CHANGELOG.md
+              echo "" >> CHANGELOG.md
+              echo "" >> CHANGELOG.md
+              echo "---" >> CHANGELOG.md
+              echo "**이전 릴리즈**: $previous_release_tag" >> CHANGELOG.md
+              echo "**포함된 커밋 수**: $(git rev-list --count "$previous_release_tag..HEAD" 2>/dev/null || echo "0")" >> CHANGELOG.md
+            else
+              echo "⚠️ 변경사항이 없거나 범위 계산 오류 - 최근 5개 커밋 포함" >> CHANGELOG.md
+              git log -5 --pretty=format:"- %s" >> CHANGELOG.md
+              echo "" >> CHANGELOG.md
+              echo "" >> CHANGELOG.md
+              echo "---" >> CHANGELOG.md
+              echo "**이전 릴리즈**: $previous_release_tag" >> CHANGELOG.md
+              echo "**참고**: 범위 계산 문제로 최근 5개 커밋을 포함했습니다." >> CHANGELOG.md
+            fi
           else
             echo "⚠️ 이전 정식 릴리즈 태그를 찾을 수 없음 - 모든 커밋 포함"
-            
-            # 이전 릴리즈가 없는 경우 모든 커밋 포함
             git log --pretty=format:"- %s" >> CHANGELOG.md
-            
             echo "" >> CHANGELOG.md
             echo "" >> CHANGELOG.md
             echo "---" >> CHANGELOG.md
