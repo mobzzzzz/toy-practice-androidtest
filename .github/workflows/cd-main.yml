@@ -141,19 +141,16 @@ jobs:
           
           # 기존 태그가 있는지 확인
           if git tag -l | grep -q "^$release_tag$"; then
-            if [[ "$pr_branch" =~ ^hotfix/ ]]; then
-              echo "🔄 Hotfix: 기존 태그 $release_tag 삭제 후 재생성"
-              git tag -d "$release_tag" || true
-              git push origin ":refs/tags/$release_tag" || true
-            else
-              echo "❌ 태그 $release_tag가 이미 존재합니다"
-              exit 1
-            fi
+            echo "⚠️ 태그 $release_tag가 이미 존재합니다."
+            echo "🔍 기존 릴리즈를 업데이트하는 방식으로 처리됩니다."
+            echo "📝 태그는 그대로 유지하고 릴리즈만 업데이트합니다."
+          else
+            echo "🆕 새로운 태그를 생성합니다: $release_tag"
+            git tag -a "$release_tag" -m "Release $release_tag"
+            git push origin "$release_tag"
           fi
           
-          echo "Creating release tag: $release_tag (from beta: $latest_beta)"
-          git tag -a "$release_tag" -m "Release $release_tag"
-          git push origin "$release_tag"
+          echo "✅ 릴리즈 태그 준비 완료: $release_tag (from beta: $latest_beta)"
 
   # APK 빌드 (릴리즈 태그 생성 후)
   build-apk:

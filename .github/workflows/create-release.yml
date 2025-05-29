@@ -238,9 +238,19 @@ jobs:
         id: check-existing
         run: |
           TAG_NAME="${{ inputs.tag_name }}"
-          echo "기존 릴리즈 확인 중: $TAG_NAME"
+          echo "🔍 기존 릴리즈 및 태그 확인 중: $TAG_NAME"
           
-          # GitHub API를 통해 기존 릴리즈 확인
+          # 1. 태그 존재 여부 확인
+          git fetch --tags
+          if git tag -l | grep -q "^$TAG_NAME$"; then
+            echo "📌 태그 $TAG_NAME 존재함"
+            tag_exists="true"
+          else
+            echo "📌 태그 $TAG_NAME 없음"
+            tag_exists="false"
+          fi
+          
+          # 2. GitHub API를 통해 기존 릴리즈 확인
           api_response=$(curl -s -w "HTTPSTATUS:%{http_code}" \
             -H "Authorization: token ${{ secrets.ADMIN_TOKEN }}" \
             "https://api.github.com/repos/${{ github.repository }}/releases/tags/$TAG_NAME")
@@ -257,11 +267,12 @@ jobs:
             is_draft=$(echo "$response_body" | jq -r '.draft // false')
             is_prerelease=$(echo "$response_body" | jq -r '.prerelease // false')
             
-            echo "기존 릴리즈 정보:"
+            echo "📋 기존 릴리즈 정보:"
             echo "  - ID: $existing_id"
             echo "  - 이름: $existing_name"
             echo "  - Draft 상태: $is_draft"
             echo "  - Prerelease 상태: $is_prerelease"
+            echo "  - 태그 존재: $tag_exists"
             
             echo "🗑️ 기존 릴리즈를 삭제하고 새로 생성합니다."
             
@@ -282,9 +293,15 @@ jobs:
               echo "can_create=false" >> $GITHUB_OUTPUT
               exit 1
             fi
-          else
+          elif [ "$http_code" = "404" ]; then
             echo "✅ 기존 릴리즈가 없습니다. 새 릴리즈를 생성할 수 있습니다."
+            echo "📌 태그 존재 여부: $tag_exists"
             echo "can_create=true" >> $GITHUB_OUTPUT
+          else
+            echo "❌ API 오류 발생: HTTP $http_code"
+            echo "🔍 응답 내용: $api_response"
+            echo "can_create=false" >> $GITHUB_OUTPUT
+            exit 1
           fi
 
       - name: Create Release
