@@ -18,7 +18,47 @@ GitHub Repository → Settings → Secrets and variables → Actions → Secrets
 
 | 시크릿명 | 설명 | 권한 요구사항 | 필수 여부 |
 |----------|------|---------------|-----------|
-| `ADMIN_TOKEN` | GitHub Personal Access Token | `repo`, `actions:write` | ✅ 필수 |
+| `APP_ID` | GitHub App ID | GitHub App 생성 필요 | ✅ 필수 |
+| `APP_PRIVATE_KEY` | GitHub App Private Key | GitHub App 생성 필요 | ✅ 필수 |
+
+## 🤖 **GitHub App 생성 및 설정**
+
+### 1. **GitHub App 생성**
+
+1. GitHub → Settings → Developer settings → GitHub Apps
+2. "New GitHub App" 클릭
+3. 다음 정보 입력:
+   - **App name**: `[프로젝트명]-ci-cd` (예: `toy-android-practice-ci-cd`)
+   - **Homepage URL**: 리포지토리 URL
+   - **Webhook**: 체크 해제 (필요 없음)
+
+### 2. **권한 설정**
+
+다음 권한들을 설정해주세요:
+
+#### Repository permissions:
+- ✅ **Actions**: Write (워크플로우 트리거)
+- ✅ **Contents**: Write (코드 푸시, 태그 생성)
+- ✅ **Metadata**: Read (기본 정보 읽기)
+- ✅ **Variables**: Write (VERSION_CODE 업데이트)
+- ✅ **Pull requests**: Write (PR 생성)
+
+### 3. **Private Key 생성**
+
+1. 생성된 GitHub App 설정 페이지에서 "Generate a private key" 클릭
+2. 다운로드된 `.pem` 파일 내용을 복사
+
+### 4. **GitHub App 설치**
+
+1. GitHub App 설정 페이지에서 "Install App" 클릭
+2. 대상 리포지토리 선택하여 설치
+
+### 5. **Repository Secrets 설정**
+
+1. Repository → Settings → Secrets and variables → Actions → Secrets
+2. "New repository secret" 클릭하여 다음 2개 추가:
+   - **Name**: `APP_ID`, **Secret**: GitHub App ID (숫자)
+   - **Name**: `APP_PRIVATE_KEY`, **Secret**: `.pem` 파일 전체 내용
 
 ## 🚨 **자주 발생하는 에러와 해결 방법**
 
@@ -37,39 +77,49 @@ Error: Variable VERSION_CODE not found
 4. Name: `VERSION_CODE`, Value: `1` 입력
 5. "Add variable" 클릭
 
-### ❌ **Error 2: ADMIN_TOKEN 권한 부족**
+### ❌ **Error 2: GitHub App 설정 오류**
+
+```
+Error: APP_ID 시크릿이 설정되지 않았습니다
+Error: APP_PRIVATE_KEY 시크릿이 설정되지 않았습니다
+```
+
+**원인**: GitHub App 관련 Secrets가 설정되지 않음
+
+**해결 방법**: 위의 "GitHub App 생성 및 설정" 섹션 참조
+
+### ❌ **Error 3: GitHub App 권한 부족**
 
 ```
 Error: Resource not accessible by integration
 Error: 403 Forbidden
 ```
 
-**원인**: `ADMIN_TOKEN`의 권한이 부족하거나 토큰이 없음
+**원인**: GitHub App의 권한이 부족하거나 설치되지 않음
 
 **해결 방법**:
-1. GitHub → Settings → Developer settings → Personal access tokens → Tokens (classic)
-2. "Generate new token (classic)" 클릭
-3. 다음 권한 선택:
-   - ✅ `repo` (Full control of private repositories)
-   - ✅ `workflow` (Update GitHub Action workflows)
-   - ✅ `write:packages` (Upload packages to GitHub Package Registry)
-4. 생성된 토큰을 복사
-5. Repository → Settings → Secrets and variables → Actions → Secrets
-6. "New repository secret" 클릭
-7. Name: `ADMIN_TOKEN`, Secret: 복사한 토큰 입력
+1. GitHub App 설정에서 권한 확인 (위의 권한 설정 참조)
+2. GitHub App이 리포지토리에 설치되어 있는지 확인
+3. 권한 변경 후 앱을 리포지토리에 재설치
 
-### ❌ **Error 3: 태그 생성/삭제 권한 없음**
+### ❌ **Error 4: GitHub App 토큰 생성 실패**
 
 ```
-Error: refusing to allow a GitHub App to create or update workflow
-Error: Permission denied (publickey)
+Error: GitHub App 토큰이 유효하지 않습니다
 ```
 
-**원인**: 기본 `GITHUB_TOKEN`으로는 워크플로우 수정 불가
+**원인**: 
+- APP_ID와 APP_PRIVATE_KEY가 올바르지 않음
+- Private key가 만료됨
+- GitHub App이 삭제됨
 
-**해결 방법**: `ADMIN_TOKEN` 사용 (위 Error 2 해결 방법 참조)
+**해결 방법**:
+1. APP_ID가 올바른지 확인
+2. APP_PRIVATE_KEY가 완전한 .pem 파일 내용인지 확인
+3. GitHub App이 여전히 존재하는지 확인
+4. 필요시 새로운 Private key 생성
 
-### ❌ **Error 4: 릴리즈 생성 실패**
+### ❌ **Error 5: 릴리즈 생성 실패**
 
 ```
 Error: Not Found
@@ -82,23 +132,9 @@ Error: Validation Failed
 - 잘못된 태그 형식
 
 **해결 방법**:
-1. `ADMIN_TOKEN` 권한 확인 (Error 2 참조)
+1. GitHub App 권한 확인 (Error 3 참조)
 2. 기존 태그/릴리즈 확인 및 정리
 3. 태그 형식 확인 (`v1.0.0`, `v1.0.0-beta.20231201120000`)
-
-### ❌ **Error 5: API Rate Limit 초과**
-
-```
-Error: API rate limit exceeded
-Error: 429 Too Many Requests
-```
-
-**원인**: GitHub API 호출 한도 초과
-
-**해결 방법**:
-1. 잠시 후 워크플로우 재실행
-2. Personal Access Token 사용 시 한도가 더 높음
-3. 필요시 GitHub Support에 문의
 
 ## 🔍 **설정 확인 방법**
 
@@ -114,26 +150,39 @@ GitHub Repository → Settings → Secrets and variables → Actions → Variabl
 GitHub Repository → Settings → Secrets and variables → Actions → Secrets
 ```
 
-### 3. **토큰 권한 확인**
+### 3. **GitHub App 확인**
 ```bash
-# GitHub CLI로 확인
-gh auth status
-
-# API로 확인
-curl -H "Authorization: token YOUR_TOKEN" https://api.github.com/user
+# GitHub App 설정 페이지에서 확인
+GitHub → Settings → Developer settings → GitHub Apps
 ```
+
+### 4. **GitHub App 설치 확인**
+```bash
+# Repository Settings에서 확인
+GitHub Repository → Settings → Integrations → GitHub Apps
+```
+
+## 🆚 **GitHub App vs Personal Access Token**
+
+| 항목 | GitHub App | Personal Access Token |
+|------|------------|----------------------|
+| **보안** | ✅ 높음 (세밀한 권한 제어) | ⚠️ 낮음 (광범위한 권한) |
+| **만료** | ✅ 자동 갱신 (1시간) | ❌ 수동 갱신 필요 |
+| **감사** | ✅ 상세한 활동 로그 | ⚠️ 제한적 로그 |
+| **관리** | ✅ 중앙 집중식 | ❌ 개별 관리 |
+| **권한** | ✅ 리포지토리별 세밀 제어 | ❌ 계정 전체 권한 |
 
 ## 📚 **추가 참고 자료**
 
+- [GitHub Apps Documentation](https://docs.github.com/en/apps)
 - [GitHub Actions Variables](https://docs.github.com/en/actions/learn-github-actions/variables)
 - [GitHub Actions Secrets](https://docs.github.com/en/actions/security-guides/encrypted-secrets)
-- [Personal Access Tokens](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/creating-a-personal-access-token)
-- [GitHub API Rate Limiting](https://docs.github.com/en/rest/overview/resources-in-the-rest-api#rate-limiting)
+- [Creating GitHub Apps](https://docs.github.com/en/apps/creating-github-apps)
 
 ## 🆘 **문제 해결이 안 될 때**
 
 1. **워크플로우 로그 확인**: Actions 탭에서 실패한 작업의 상세 로그 확인
 2. **설정 재확인**: Variables와 Secrets가 정확히 설정되었는지 확인
-3. **권한 재확인**: Personal Access Token의 권한이 충분한지 확인
+3. **GitHub App 재확인**: App 권한과 설치 상태 확인
 4. **GitHub Status 확인**: [GitHub Status](https://www.githubstatus.com/)에서 서비스 장애 여부 확인
 5. **Issue 생성**: 위 방법으로도 해결되지 않으면 Repository에 Issue 생성 

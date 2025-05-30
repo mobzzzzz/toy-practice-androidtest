@@ -47,7 +47,8 @@ CI/CD 워크플로우가 정상적으로 작동하려면 다음 설정이 필요
 | 설정 타입 | 이름 | 설명 | 필수 여부 |
 |-----------|------|------|-----------|
 | Variable | `VERSION_CODE` | APK 버전 코드 | ✅ 필수 |
-| Secret | `ADMIN_TOKEN` | GitHub Personal Access Token | ✅ 필수 |
+| Secret | `APP_ID` | GitHub App ID | ✅ 필수 |
+| Secret | `APP_PRIVATE_KEY` | GitHub App Private Key | ✅ 필수 |
 
 ### 📚 **상세 설정 가이드**
 
