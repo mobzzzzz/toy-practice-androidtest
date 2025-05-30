@@ -81,11 +81,18 @@ jobs:
     needs: detect-gitflow-changes
     if: needs.detect-gitflow-changes.outputs.should_sync == 'true'
     steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
       - name: 코드 체크아웃
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ secrets.ADMIN_TOKEN }}
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Git 설정
         run: |

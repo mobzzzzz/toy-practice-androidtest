@@ -71,11 +71,18 @@ jobs:
       has_previous_beta: ${{ steps.create-beta-tag.outputs.has_previous_beta }}
       previous_beta: ${{ steps.create-beta-tag.outputs.previous_beta }}
     steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.merge_commit_sha }}
-          token: ${{ secrets.ADMIN_TOKEN }}
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Create Beta Tag
         id: create-beta-tag
@@ -192,7 +199,8 @@ jobs:
       previous_beta_tag: ${{ needs.version-management.outputs.previous_beta }}
       has_previous_beta: ${{ needs.version-management.outputs.has_previous_beta }}
     secrets:
-      ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+      APP_ID: ${{ secrets.APP_ID }}
+      APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
 
   # 배포 스킵 알림
   deployment-skipped:
