@@ -38,6 +38,20 @@ PR 머지 → 브랜치별 CD 실행
 - **브랜치별 특화**: 각 브랜치의 요구사항에 맞는 전용 CD 파이프라인
 - **향후 확장**: `cd-stage.yml.template`을 사용하여 stage 브랜치 지원 추가 가능
 
+### 🔄 **GitHub Flow 대안**
+
+현재는 **GitFlow** 방식을 사용하지만, 더 단순한 **GitHub Flow** 방식도 지원합니다:
+
+- **GitFlow** (현재): `feature/* → dev → main` (브랜치별 자동 릴리즈)
+- **GitHub Flow** (대안): `feature/* → main` (PR 라벨 기반 릴리즈)
+
+👉 **[GitHub Flow 가이드](docs/GITHUB_FLOW_GUIDE.md)** 에서 자세한 설정 방법을 확인하세요!
+
+#### GitHub Flow의 장점:
+- ✅ **단순함**: 2개 브랜치 타입만 사용 (`main`, `feature/*`)
+- ✅ **유연성**: PR 라벨로 베타/릴리즈 결정 (`beta`, `release`)
+- ✅ **빠른 배포**: 복잡한 브랜치 규칙 없이 즉시 배포 가능
+
 ## ⚙️ **GitHub 설정 요구사항**
 
 CI/CD 워크플로우가 정상적으로 작동하려면 다음 설정이 필요합니다:
