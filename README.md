@@ -49,6 +49,7 @@ CI/CD 워크플로우가 정상적으로 작동하려면 다음 설정이 필요
 | Variable | `VERSION_CODE` | APK 버전 코드 | ✅ 필수 |
 | Secret | `APP_ID` | GitHub App ID | ✅ 필수 |
 | Secret | `APP_PRIVATE_KEY` | GitHub App Private Key | ✅ 필수 |
+| Branch Rules | **Bypass List** | GitHub App을 Branch Protection Rules의 bypass list에 등록 | ✅ 필수 |
 
 ### 📚 **상세 설정 가이드**
 
