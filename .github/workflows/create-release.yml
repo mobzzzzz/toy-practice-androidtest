@@ -3,16 +3,16 @@ name: Create Release
 on:
   workflow_call:
     inputs:
-      release_type:
-        description: 'Release type (beta or release)'
-        required: true
-        type: string
       tag_name:
         description: 'Tag name for the release'
         required: true
         type: string
       artifact_name:
         description: 'Name of the artifact to download'
+        required: true
+        type: string
+      release_type:
+        description: 'Type of release (production or beta)'
         required: true
         type: string
       version_code:
@@ -30,7 +30,9 @@ on:
         type: string
         default: 'false'
     secrets:
-      ADMIN_TOKEN:
+      APP_ID:
+        required: true
+      APP_PRIVATE_KEY:
         required: true
 
 jobs:
@@ -40,11 +42,18 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.tag_name }}
           fetch-depth: 0
-          token: ${{ secrets.ADMIN_TOKEN }}
+          token: ${{ steps.app-token.outputs.token }}
         
       - name: Download Build Artifact
         uses: actions/download-artifact@v4
@@ -57,9 +66,9 @@ jobs:
         id: get-latest-version-code
         uses: actions/github-script@v7
         env:
-          GH_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         with:
-          github-token: ${{ secrets.ADMIN_TOKEN }}
+          github-token: ${{ steps.app-token.outputs.token }}
           script: |
             // 최신 VERSION_CODE 다시 읽기 (main 머지로 인한 변경 반영)
             const { data: variable } = await github.rest.actions.getRepoVariable({
@@ -94,7 +103,7 @@ jobs:
           
           # GitHub API를 통해 이전 릴리즈 정보 가져오기
           api_response=$(curl -s -w "HTTPSTATUS:%{http_code}" \
-            -H "Authorization: token ${{ secrets.ADMIN_TOKEN }}" \
+            -H "Authorization: token ${{ steps.app-token.outputs.token }}" \
             "https://api.github.com/repos/${{ github.repository }}/releases/tags/$previous_beta")
           
           http_code=$(echo "$api_response" | tr -d '\n' | sed -e 's/.*HTTPSTATUS://')
@@ -150,7 +159,7 @@ jobs:
             
             delete_response=$(curl -s -w "HTTPSTATUS:%{http_code}" \
               -X DELETE \
-              -H "Authorization: token ${{ secrets.ADMIN_TOKEN }}" \
+              -H "Authorization: token ${{ steps.app-token.outputs.token }}" \
               "https://api.github.com/repos/${{ github.repository }}/releases/$release_id")
             
             delete_http_code=$(echo "$delete_response" | tr -d '\n' | sed -e 's/.*HTTPSTATUS://')
@@ -301,7 +310,7 @@ jobs:
           
           # 2. GitHub API를 통해 기존 릴리즈 확인
           api_response=$(curl -s -w "HTTPSTATUS:%{http_code}" \
-            -H "Authorization: token ${{ secrets.ADMIN_TOKEN }}" \
+            -H "Authorization: token ${{ steps.app-token.outputs.token }}" \
             "https://api.github.com/repos/${{ github.repository }}/releases/tags/$TAG_NAME")
           
           http_code=$(echo "$api_response" | tr -d '\n' | sed -e 's/.*HTTPSTATUS://')
@@ -328,7 +337,7 @@ jobs:
             # 기존 릴리즈 삭제
             delete_response=$(curl -s -w "HTTPSTATUS:%{http_code}" \
               -X DELETE \
-              -H "Authorization: token ${{ secrets.ADMIN_TOKEN }}" \
+              -H "Authorization: token ${{ steps.app-token.outputs.token }}" \
               "https://api.github.com/repos/${{ github.repository }}/releases/$existing_id")
             
             delete_http_code=$(echo "$delete_response" | tr -d '\n' | sed -e 's/.*HTTPSTATUS://')
@@ -357,7 +366,7 @@ jobs:
         if: steps.check-existing.outputs.can_create == 'true'
         uses: softprops/action-gh-release@v1
         env:
-          GITHUB_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
         with:
           files: |
             artifacts/**/*.apk
