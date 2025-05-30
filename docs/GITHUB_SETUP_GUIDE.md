@@ -53,7 +53,25 @@ GitHub Repository → Settings → Secrets and variables → Actions → Secrets
 1. GitHub App 설정 페이지에서 "Install App" 클릭
 2. 대상 리포지토리 선택하여 설치
 
-### 5. **Repository Secrets 설정**
+### 5. **Branch Protection Rules 설정** ⚠️ **중요**
+
+GitHub App이 보호된 브랜치(main, dev 등)에 푸시할 수 있도록 설정해야 합니다:
+
+1. **Repository → Settings → Branches**
+2. **Branch protection rules**에서 보호된 브랜치 규칙 클릭 (예: `main`, `dev`)
+3. **"Restrict pushes that create files"** 섹션에서:
+   - ✅ **"Allow specified actors to bypass required pull requests"** 체크
+   - **"Add exception"** 클릭
+   - **Apps** 탭에서 생성한 GitHub App 선택하여 추가
+
+#### 설정해야 하는 브랜치들:
+- ✅ **main** 브랜치: 릴리즈 태그 생성 및 VERSION_CODE 업데이트
+- ✅ **dev** 브랜치: GitFlow 자동 동기화
+- ✅ **기타 보호된 브랜치**: 필요에 따라 설정
+
+⚠️ **주의**: 이 설정을 하지 않으면 GitHub App이 보호된 브랜치에 푸시할 수 없어 워크플로우가 실패합니다.
+
+### 6. **Repository Secrets 설정**
 
 1. Repository → Settings → Secrets and variables → Actions → Secrets
 2. "New repository secret" 클릭하여 다음 2개 추가:
@@ -119,7 +137,24 @@ Error: GitHub App 토큰이 유효하지 않습니다
 3. GitHub App이 여전히 존재하는지 확인
 4. 필요시 새로운 Private key 생성
 
-### ❌ **Error 5: 릴리즈 생성 실패**
+### ❌ **Error 5: Branch protection rules 위반**
+
+```
+Error: refusing to allow a GitHub App to create or update workflow
+Error: protected branch hook declined
+Error: push declined due to repository rule violations
+```
+
+**원인**: GitHub App이 Branch protection rules의 bypass list에 등록되지 않음
+
+**해결 방법**:
+1. Repository → Settings → Branches
+2. 보호된 브랜치 규칙 클릭 (main, dev 등)
+3. "Allow specified actors to bypass required pull requests" 체크
+4. "Add exception" → Apps 탭에서 GitHub App 선택하여 추가
+5. 모든 보호된 브랜치에 대해 반복
+
+### ❌ **Error 6: 릴리즈 생성 실패**
 
 ```
 Error: Not Found
@@ -133,8 +168,9 @@ Error: Validation Failed
 
 **해결 방법**:
 1. GitHub App 권한 확인 (Error 3 참조)
-2. 기존 태그/릴리즈 확인 및 정리
-3. 태그 형식 확인 (`v1.0.0`, `v1.0.0-beta.20231201120000`)
+2. Branch protection rules 확인 (Error 5 참조)
+3. 기존 태그/릴리즈 확인 및 정리
+4. 태그 형식 확인 (`v1.0.0`, `v1.0.0-beta.20231201120000`)
 
 ## 🔍 **설정 확인 방법**
 
@@ -160,6 +196,13 @@ GitHub → Settings → Developer settings → GitHub Apps
 ```bash
 # Repository Settings에서 확인
 GitHub Repository → Settings → Integrations → GitHub Apps
+```
+
+### 5. **Branch Protection Rules 확인**
+```bash
+# Repository Settings에서 확인
+GitHub Repository → Settings → Branches
+# 각 보호된 브랜치 규칙에서 GitHub App이 bypass list에 있는지 확인
 ```
 
 ## 🆚 **GitHub App vs Personal Access Token**
