@@ -1,0 +1,341 @@
+name: CD - GitHub Flow (Template)
+
+# GitHub Flow 기반 CD 워크플로우
+# feature/* -> main 브랜치로의 PR 머지 시 실행
+# PR 라벨에 따라 베타 또는 정식 릴리즈 결정:
+# - 'beta' 라벨: 베타 릴리즈 생성
+# - 'release' 라벨: 정식 릴리즈 생성
+# - 라벨 없음: 기본적으로 베타 릴리즈 생성
+
+on:
+  pull_request_target:
+    types: [closed]
+    branches: ["main"]
+    # 문서나 워크플로우 변경만 있는 경우 배포 스킵
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+      - 'README*'
+      - '.gitignore'
+      - '.editorconfig'
+      - '.cursor/**'
+
+# 배포 작업은 순차적으로 실행 (여러 PR 동시 머지 시 대기열 처리)
+concurrency:
+  group: "cd-github-flow"
+  cancel-in-progress: false
+
+jobs:
+  # 배포 스킵 여부 확인
+  check-skip-deployment:
+    name: Check Skip Deployment
+    if: github.event.pull_request.merged == true
+    uses: ./.github/workflows/check-skip-deployment.yml
+    with:
+      pr_title: ${{ github.event.pull_request.title }}
+      pr_labels: ${{ toJson(github.event.pull_request.labels.*.name) }}
+
+  # 릴리즈 타입 결정 (PR 라벨 기반)
+  determine-release-type:
+    name: Determine Release Type
+    runs-on: ubuntu-latest
+    needs: [check-skip-deployment]
+    if: needs.check-skip-deployment.outputs.should_skip != 'true'
+    outputs:
+      release_type: ${{ steps.check-labels.outputs.release_type }}
+      is_beta: ${{ steps.check-labels.outputs.is_beta }}
+      is_release: ${{ steps.check-labels.outputs.is_release }}
+    steps:
+      - name: Check PR Labels
+        id: check-labels
+        run: |
+          labels='${{ toJson(github.event.pull_request.labels.*.name) }}'
+          echo "PR 라벨: $labels"
+          
+          # 라벨 확인
+          has_beta=$(echo "$labels" | jq -r 'map(select(. == "beta")) | length > 0')
+          has_release=$(echo "$labels" | jq -r 'map(select(. == "release")) | length > 0')
+          
+          echo "Beta 라벨 존재: $has_beta"
+          echo "Release 라벨 존재: $has_release"
+          
+          # 릴리즈 타입 결정
+          if [ "$has_release" = "true" ]; then
+            echo "🎯 정식 릴리즈로 결정 (release 라벨 감지)"
+            echo "release_type=release" >> $GITHUB_OUTPUT
+            echo "is_beta=false" >> $GITHUB_OUTPUT
+            echo "is_release=true" >> $GITHUB_OUTPUT
+          elif [ "$has_beta" = "true" ]; then
+            echo "🧪 베타 릴리즈로 결정 (beta 라벨 감지)"
+            echo "release_type=beta" >> $GITHUB_OUTPUT
+            echo "is_beta=true" >> $GITHUB_OUTPUT
+            echo "is_release=false" >> $GITHUB_OUTPUT
+          else
+            echo "🧪 베타 릴리즈로 결정 (기본값 - 라벨 없음)"
+            echo "release_type=beta" >> $GITHUB_OUTPUT
+            echo "is_beta=true" >> $GITHUB_OUTPUT
+            echo "is_release=false" >> $GITHUB_OUTPUT
+          fi
+
+  # GitHub 설정 검증
+  validate-config:
+    name: Validate Configuration
+    needs: [determine-release-type, check-skip-deployment]
+    if: needs.check-skip-deployment.outputs.should_skip != 'true'
+    uses: ./.github/workflows/validate-github-config.yml
+    secrets: inherit
+
+  # Version Code 업데이트 (정식 릴리즈인 경우에만)
+  update-version-code:
+    name: Update Version Code
+    runs-on: ubuntu-latest
+    needs: [validate-config, determine-release-type, check-skip-deployment]
+    if: needs.check-skip-deployment.outputs.should_skip != 'true' && needs.determine-release-type.outputs.is_release == 'true'
+    permissions:
+      contents: write
+      actions: write
+    outputs:
+      new_version_code: ${{ steps.version-update.outputs.new_version }}
+    steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - name: Update Version Code
+        id: version-update
+        uses: actions/github-script@v7
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const currentVersion = parseInt('${{ vars.VERSION_CODE }}') || 0;
+            const newVersion = currentVersion + 1;
+            
+            await github.rest.actions.updateRepoVariable({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              name: 'VERSION_CODE',
+              value: newVersion.toString()
+            });
+            
+            console.log(`Version Code updated: ${currentVersion} → ${newVersion}`);
+            core.setOutput('new_version', newVersion.toString());
+
+  # 타임스탬프 생성
+  generate-timestamp:
+    name: Generate Timestamp
+    runs-on: ubuntu-latest
+    needs: [validate-config, determine-release-type, check-skip-deployment]
+    if: needs.check-skip-deployment.outputs.should_skip != 'true'
+    outputs:
+      timestamp: ${{ steps.set-timestamp.outputs.value }}
+    steps:
+      - name: Set Timestamp
+        id: set-timestamp
+        env:
+          TZ: 'Asia/Seoul'
+        run: echo "value=$(date +%Y%m%d%H%M%S)" >> $GITHUB_OUTPUT
+
+  # 버전 관리 및 태그 생성
+  version-management:
+    name: Version Management
+    runs-on: ubuntu-latest
+    needs: [validate-config, determine-release-type, generate-timestamp, check-skip-deployment]
+    if: needs.check-skip-deployment.outputs.should_skip != 'true'
+    permissions:
+      contents: write
+      actions: write
+    outputs:
+      version_code: ${{ steps.create-tag.outputs.version_code }}
+      tag_name: ${{ steps.create-tag.outputs.tag }}
+      version: ${{ steps.create-tag.outputs.version }}
+      has_previous_beta: ${{ steps.create-tag.outputs.has_previous_beta }}
+      previous_beta: ${{ steps.create-tag.outputs.previous_beta }}
+    steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Create Tag
+        id: create-tag
+        run: |
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+          
+          release_type="${{ needs.determine-release-type.outputs.release_type }}"
+          echo "🎯 릴리즈 타입: $release_type"
+          
+          # 최신 정식 릴리즈 태그 가져오기
+          latest_release=$(git tag -l "v*" | grep -v "beta" | sort -V | tail -n 1)
+          
+          # 최신 베타 태그 가져오기
+          latest_beta=$(git tag -l "v*-beta*" | sort -V | tail -n 1)
+          
+          # PR 브랜치 이름에서 타입 추출
+          branch_name="${{ github.head_ref }}"
+          echo "📋 PR 브랜치: $branch_name"
+          
+          # 버전 결정 로직
+          if [ "$release_type" = "release" ]; then
+            echo "🎯 정식 릴리즈 생성"
+            
+            # 베타 태그가 있는 경우 해당 버전 사용, 없으면 최신 릴리즈 기반
+            if [ ! -z "$latest_beta" ]; then
+              version=$(echo $latest_beta | sed 's/^v\(.*\)-beta\..*/\1/')
+              echo "🔍 베타 버전에서 추출: $version"
+            elif [ ! -z "$latest_release" ]; then
+              version=${latest_release#v}
+              IFS='.' read -r major minor patch <<< "$version"
+              
+              # 브랜치 타입에 따라 버전 증가
+              if [[ "$branch_name" =~ ^feat/ ]]; then
+                minor=$((minor + 1))
+                patch=0
+              else
+                patch=$((patch + 1))
+              fi
+              version="$major.$minor.$patch"
+              echo "🔍 최신 릴리즈 기반 버전 증가: $version"
+            else
+              # 신규 프로젝트
+              if [[ "$branch_name" =~ ^feat/ ]]; then
+                version="0.1.0"
+              else
+                version="0.0.1"
+              fi
+              echo "🆕 신규 프로젝트 첫 릴리즈: $version"
+            fi
+            
+            # 정식 릴리즈 태그 생성
+            tag_name="v$version"
+            
+            # 업데이트된 VERSION_CODE 사용 (update-version-code job에서 생성)
+            version_code="${{ needs.update-version-code.outputs.new_version_code }}"
+            
+          else
+            echo "🧪 베타 릴리즈 생성"
+            
+            # 신규 프로젝트 또는 태그가 없는 경우 기본값 설정
+            if [ -z "$latest_release" ]; then
+              echo "No release tags found. Starting with version 0.0.0 for new project."
+              major=0
+              minor=0
+              patch=0
+            else
+              version=${latest_release#v}
+              IFS='.' read -r major minor patch <<< "$version"
+              
+              # 최신 베타 버전 분석
+              if [ ! -z "$latest_beta" ]; then
+                beta_version=$(echo $latest_beta | sed 's/v\([0-9]*\.[0-9]*\.[0-9]*\).*/\1/')
+                IFS='.' read -r beta_major beta_minor beta_patch <<< "$beta_version"
+                
+                # 베타 버전이 이미 minor 버전이 올라간 상태인지 확인
+                if [ "$beta_minor" -gt "$minor" ]; then
+                  major=$beta_major
+                  minor=$beta_minor
+                  patch=$beta_patch
+                  echo "Using existing beta version: v$major.$minor.$patch"
+                else
+                  # 브랜치 타입에 따라 버전 결정
+                  if [[ "$branch_name" =~ ^feat/ ]]; then
+                    minor=$((minor + 1))
+                    patch=0
+                  else
+                    patch=$((patch + 1))
+                  fi
+                fi
+              else
+                # 브랜치 타입에 따라 버전 결정
+                if [[ "$branch_name" =~ ^feat/ ]]; then
+                  minor=$((minor + 1))
+                  patch=0
+                else
+                  patch=$((patch + 1))
+                fi
+              fi
+            fi
+            
+            # 신규 프로젝트에서 첫 번째 개발 시 버전 처리
+            if [ "$major" -eq 0 ] && [ "$minor" -eq 0 ] && [ "$patch" -eq 0 ]; then
+              if [[ "$branch_name" =~ ^feat/ ]]; then
+                minor=1
+                patch=0
+                echo "First feature development: v0.1.0"
+              else
+                patch=1
+                echo "First fix/improvement: v0.0.1"
+              fi
+            fi
+            
+            version="$major.$minor.$patch"
+            
+            # 이전 베타 태그 찾기
+            previous_beta=$(git tag -l "v${version}-beta*" | sort -V | tail -n 1)
+            
+            # 베타 태그 생성
+            tag_name="v$version-beta.${{ needs.generate-timestamp.outputs.timestamp }}"
+            
+            # 현재 VERSION_CODE 사용
+            version_code="${{ vars.VERSION_CODE }}"
+            if [ -z "$version_code" ] || [ "$version_code" = "0" ]; then
+              version_code=1
+              echo "No VERSION_CODE found. Using default value: 1"
+            fi
+            
+            # 이전 베타 정보 설정
+            echo "has_previous_beta=false" >> $GITHUB_OUTPUT
+            if [ ! -z "$previous_beta" ]; then
+              echo "has_previous_beta=true" >> $GITHUB_OUTPUT
+              echo "previous_beta=$previous_beta" >> $GITHUB_OUTPUT
+              echo "이전 베타 태그 발견: $previous_beta (릴리즈 작업에서 삭제 예정)"
+            fi
+          fi
+          
+          echo "tag=$tag_name" >> $GITHUB_OUTPUT
+          echo "version=$version" >> $GITHUB_OUTPUT
+          echo "version_code=$version_code" >> $GITHUB_OUTPUT
+          
+          echo "Creating tag: $tag_name (version code: $version_code)"
+          git tag -a "$tag_name" -m "$release_type release $tag_name (version code: $version_code)"
+          git push origin "$tag_name"
+
+  # APK 빌드
+  build-apk:
+    name: Build APK
+    needs: [version-management, determine-release-type, generate-timestamp, check-skip-deployment]
+    if: needs.check-skip-deployment.outputs.should_skip != 'true'
+    uses: ./.github/workflows/build-apk.yml
+    with:
+      build_type: ${{ needs.determine-release-type.outputs.is_release == 'true' && 'release' || 'debug' }}
+      branch_ref: ${{ needs.version-management.outputs.tag_name }}
+      artifact_name: ${{ needs.determine-release-type.outputs.is_release == 'true' && 'release-build' || 'beta-build' }}
+      timestamp: ${{ needs.generate-timestamp.outputs.timestamp }}
+      version_code: ${{ needs.version-management.outputs.version_code }}
+
+  # 릴리즈 생성
+  create-release:
+    name: Create Release
+    needs: [build-apk, version-management, determine-release-type, check-skip-deployment]
+    if: needs.check-skip-deployment.outputs.should_skip != 'true'
+    uses: ./.github/workflows/create-release.yml
+    with:
+      release_type: ${{ needs.determine-release-type.outputs.release_type }}
+      tag_name: ${{ needs.version-management.outputs.tag_name }}
+      artifact_name: ${{ needs.build-apk.outputs.artifact_name }}
+      version_code: ${{ needs.version-management.outputs.version_code }}
+      previous_beta_tag: ${{ needs.version-management.outputs.previous_beta }}
+      has_previous_beta: ${{ needs.version-management.outputs.has_previous_beta }} 
